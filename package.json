@@ -1,0 +1,22 @@
+{
+  "name": "schach-3d",
+  "version": "1.0.0",
+  "description": "3D-Schach gegen den Computer (Three.js + Playwright)",
+  "main": "start.js",
+  "scripts": {
+    "start": "node start.js",
+    "serve": "node server.js",
+    "test": "playwright test"
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "chess.js": "^1.4.0",
+    "playwright": "^1.64.1",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}

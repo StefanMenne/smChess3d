@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schach 3D</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/vendor/three/build/three.module.js",
+        "three/addons/": "/vendor/three/examples/jsm/",
+        "chess.js": "/vendor/chess.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="scene"></div>
+
+  <aside id="panel">
+    <h1>Schach</h1>
+    <div id="status" data-testid="status">Lade Figuren …</div>
+
+    <div class="controls">
+      <label>Deine Farbe
+        <select id="color" data-testid="color">
+          <option value="w">Weiß</option>
+          <option value="b">Schwarz</option>
+        </select>
+      </label>
+      <label>Stärke
+        <select id="level" data-testid="level">
+          <option value="1">Leicht</option>
+          <option value="2" selected>Mittel</option>
+          <option value="3">Schwer</option>
+          <option value="4">Sehr schwer</option>
+        </select>
+      </label>
+      <div class="buttons">
+        <button id="newGame" data-testid="new-game">Neues Spiel</button>
+        <button id="undo" data-testid="undo">Zug zurück</button>
+        <button id="flip" data-testid="flip">Brett drehen</button>
+      </div>
+    </div>
+
+    <h2>Züge</h2>
+    <ol id="moves" data-testid="moves"></ol>
+  </aside>
+
+  <div id="promotion" hidden>
+    <div class="dialog">
+      <p>Umwandeln in:</p>
+      <div class="choices">
+        <button data-piece="q">Dame</button>
+        <button data-piece="r">Turm</button>
+        <button data-piece="b">Läufer</button>
+        <button data-piece="n">Springer</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loading">Lade Figuren …</div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
