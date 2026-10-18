@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Chess } from 'chess.js';
 
 // ---------------------------------------------------------------------------
@@ -17,6 +18,10 @@ const WALK_SPEED = 2.2; // Felder pro Sekunde
 // Die Modelle schauen in +Z. Weiß steht bei +Z und soll nach -Z (zu Schwarz) schauen.
 const BASE_YAW = { w: Math.PI, b: 0 };
 const MIN_THINK_MS = 450;
+// Umrissdicke in Welteinheiten (1 = eine Feldbreite). Durch die Perspektive
+// wird die Linie bei weiter entfernten Figuren automatisch dünner.
+const OUTLINE_WIDTH = 0.022;
+const SETTINGS_KEY = 'schach3d.settings';
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -29,6 +34,18 @@ const movesEl = $('moves');
 const colorSel = $('color');
 const levelSel = $('level');
 const undoBtn = $('undo');
+const toonBox = $('toon');
+
+// ---------------------------------------------------------------------------
+// Einstellungen
+// ---------------------------------------------------------------------------
+
+const settings = { toon: false };
+try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch { /* egal */ }
+
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* egal */ }
+}
 
 // ---------------------------------------------------------------------------
 // Szene
@@ -47,6 +64,13 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x24262c);
 scene.fog = new THREE.Fog(0x24262c, 22, 45);
 
+// Umgebung für Spiegelungen – ohne sie bleiben metallische Flächen (z. B. die
+// goldenen Kronen) schwarz, da Metall seine Farbe fast nur aus Reflexionen bezieht
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.6;
+pmrem.dispose();
+
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enablePan = false;
@@ -56,7 +80,7 @@ controls.maxDistance = 22;
 controls.maxPolarAngle = 1.3;
 controls.target.set(0, 0, 0);
 
-scene.add(new THREE.HemisphereLight(0xfff4e0, 0x3a3428, 1.1));
+scene.add(new THREE.HemisphereLight(0xfff4e0, 0x3a3428, 0.8));
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
 sun.position.set(5, 12, 6);
 sun.castShadow = true;
@@ -208,6 +232,64 @@ function angleLerp(a, b, t) {
 // ---------------------------------------------------------------------------
 
 const templates = {};
+const toonMaterials = new Map(); // Original-Material -> Toon-Material
+
+// Drei harte Helligkeitsstufen für den Cel-Shading-Look
+const toonGradient = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1, THREE.RedFormat);
+toonGradient.minFilter = toonGradient.magFilter = THREE.NearestFilter;
+toonGradient.needsUpdate = true;
+
+function makeToonMaterial(original) {
+  return new THREE.MeshToonMaterial({
+    map: original.map,
+    color: original.color,
+    gradientMap: toonGradient,
+    side: original.side,
+  });
+}
+
+// Umriss als "Inverted Hull": schwarze Rückseiten, im Kameraraum entlang der
+// (gehäuteten) Normalen nach außen geschoben
+const outlineMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide });
+outlineMat.onBeforeCompile = (shader) => {
+  shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `
+    #include <project_vertex>
+    #ifdef USE_SKINNING
+      vec3 outlineNormal = objectNormal;
+    #else
+      vec3 outlineNormal = normal;
+    #endif
+    mvPosition.xyz += normalize(normalMatrix * outlineNormal) * ${OUTLINE_WIDTH.toFixed(4)};
+    gl_Position = projectionMatrix * mvPosition;
+  `);
+};
+
+function addOutlines(model) {
+  const meshes = [];
+  model.traverse((o) => { if (o.isMesh) meshes.push(o); });
+  for (const mesh of meshes) {
+    const hull = mesh.isSkinnedMesh ? new THREE.SkinnedMesh(mesh.geometry, outlineMat) : new THREE.Mesh(mesh.geometry, outlineMat);
+    if (mesh.isSkinnedMesh) {
+      hull.bindMode = mesh.bindMode;
+      hull.bind(mesh.skeleton, mesh.bindMatrix);
+    }
+    hull.userData.outline = true;
+    hull.frustumCulled = false;
+    mesh.add(hull);
+  }
+}
+
+function applyPieceStyle(piece) {
+  piece.model.traverse((o) => {
+    if (!o.isMesh) return;
+    if (o.userData.outline) { o.visible = settings.toon; return; }
+    o.userData.original ??= o.material;
+    o.material = settings.toon ? toonMaterials.get(o.userData.original) : o.userData.original;
+    // Kein Eigenschatten im Toon-Modus: der Toon-Shader beleuchtet auch Rückseiten,
+    // die Shadow Map erzeugt dort sonst harte Flecken
+    o.receiveShadow = !settings.toon;
+  });
+}
 let pieces = new Map(); // Feld -> Figur
 const livePieces = new Set(); // alle Figuren in der Szene, auch gerade geschlagene
 
@@ -219,7 +301,10 @@ async function loadModels() {
       const url = `/pieces/${PIECE_FILE[type]}_${COLOR_FILE[color]}.glb`;
       jobs.push(loader.loadAsync(url).then((gltf) => {
         gltf.scene.traverse((o) => {
-          if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+          if (!o.isMesh) return;
+          o.castShadow = true;
+          o.receiveShadow = true;
+          if (!toonMaterials.has(o.material)) toonMaterials.set(o.material, makeToonMaterial(o.material));
         });
         const box = new THREE.Box3().setFromObject(gltf.scene);
         templates[color + type] = { gltf, height: box.max.y - box.min.y };
@@ -237,6 +322,8 @@ function createPiece(color, type, square) {
   const model = SkeletonUtils.clone(tpl.gltf.scene);
   model.scale.setScalar(PIECE_SCALE);
   group.add(model);
+  addOutlines(model);
+  applyPieceStyle({ model });
 
   // Unsichtbarer Klick-Körper, damit man die ganze Figur anklicken kann
   const h = tpl.height * PIECE_SCALE;
@@ -316,9 +403,11 @@ async function capturePiece(piece) {
   const mats = [];
   piece.model.traverse((o) => {
     if (o.isMesh) {
-      o.material = o.material.clone();
-      o.material.transparent = true;
-      mats.push(o.material);
+      const mat = o.material.clone();
+      mat.onBeforeCompile = o.material.onBeforeCompile; // clone() übernimmt das nicht
+      mat.transparent = true;
+      o.material = mat;
+      mats.push(mat);
     }
   });
   const tilt = (Math.random() < 0.5 ? -1 : 1) * 1.3;
@@ -634,6 +723,17 @@ undoBtn.addEventListener('click', undo);
 $('flip').addEventListener('click', () => { flipped = !flipped; cameraHome(); });
 colorSel.addEventListener('change', () => newGame());
 
+const settingsDlg = $('settings');
+$('settingsBtn').addEventListener('click', () => { settingsDlg.hidden = false; });
+$('settingsClose').addEventListener('click', () => { settingsDlg.hidden = true; });
+settingsDlg.addEventListener('click', (e) => { if (e.target === settingsDlg) settingsDlg.hidden = true; });
+toonBox.checked = settings.toon;
+toonBox.addEventListener('change', () => {
+  settings.toon = toonBox.checked;
+  saveSettings();
+  for (const p of livePieces) applyPieceStyle(p);
+});
+
 // ---------------------------------------------------------------------------
 // Render-Schleife
 // ---------------------------------------------------------------------------
@@ -673,6 +773,7 @@ window.chessApp = {
     return p ? p.color + p.type : null;
   },
   pieceCount: () => pieces.size,
+  toon: () => settings.toon,
   // Bildschirmkoordinaten (CSS-Pixel) eines Feldmittelpunkts
   squareToScreen: (sq) => {
     const v = squareToPos(sq).project(camera);

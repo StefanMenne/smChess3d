@@ -19,7 +19,10 @@
   <div id="scene"></div>
 
   <aside id="panel">
-    <h1>Schach</h1>
+    <header>
+      <h1>Schach</h1>
+      <button id="settingsBtn" class="icon" data-testid="settings" title="Einstellungen" aria-label="Einstellungen">⚙</button>
+    </header>
     <div id="status" data-testid="status">Lade Figuren …</div>
 
     <div class="controls">
@@ -57,6 +60,17 @@
         <button data-piece="b">Läufer</button>
         <button data-piece="n">Springer</button>
       </div>
+    </div>
+  </div>
+
+  <div id="settings" class="overlay" hidden>
+    <div class="dialog">
+      <h2>Einstellungen</h2>
+      <label class="option">
+        <input type="checkbox" id="toon" data-testid="toon">
+        <span>Toon-Rendering</span>
+      </label>
+      <button id="settingsClose" data-testid="settings-close">Schließen</button>
     </div>
   </div>
 

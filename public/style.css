@@ -37,6 +37,9 @@ html, body {
   backdrop-filter: blur(6px);
 }
 
+#panel header { display: flex; justify-content: space-between; align-items: center; }
+button.icon { padding: 2px 8px; font-size: 18px; line-height: 1.2; }
+
 h1 { margin: 0; font-size: 22px; letter-spacing: 0.02em; }
 h2 { margin: 6px 0 0; font-size: 14px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
 
@@ -95,6 +98,29 @@ button:disabled { opacity: 0.45; cursor: default; }
 }
 #promotion .choices { display: flex; gap: 8px; }
 #promotion button { padding: 10px 14px; }
+
+#settings {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+#settings[hidden] { display: none; }
+#settings .dialog {
+  min-width: 260px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+#settings h2 { margin: 0; }
+#settings .option { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+#settings .option input { width: 18px; height: 18px; accent-color: var(--accent); }
+#settings button { align-self: flex-end; }
 
 #loading {
   position: fixed;

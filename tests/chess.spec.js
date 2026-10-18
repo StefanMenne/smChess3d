@@ -107,3 +107,15 @@ test('Computer findet ein Matt in eins', async ({ page }) => {
   expect(await page.evaluate(() => window.chessApp.history()[0])).toBe('Qh4#');
   await expect(page.getByTestId('status')).toHaveText('Schachmatt – der Computer gewinnt.');
 });
+
+test('Einstellungen: Toon-Rendering lässt sich einschalten und bleibt gespeichert', async ({ page }) => {
+  expect(await page.evaluate(() => window.chessApp.toon())).toBe(false);
+  await page.getByTestId('settings').click();
+  await page.getByTestId('toon').check();
+  await page.getByTestId('settings-close').click();
+  expect(await page.evaluate(() => window.chessApp.toon())).toBe(true);
+  await page.reload();
+  await page.waitForSelector('body[data-ready="1"]', { timeout: 30_000 });
+  expect(await page.evaluate(() => window.chessApp.toon())).toBe(true);
+  await expect(page.getByTestId('toon')).toBeChecked();
+});
