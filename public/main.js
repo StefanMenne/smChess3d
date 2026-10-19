@@ -35,12 +35,14 @@ const colorSel = $('color');
 const levelSel = $('level');
 const undoBtn = $('undo');
 const toonBox = $('toon');
+const renderInfoBox = $('renderInfo');
+const statsEl = $('stats');
 
 // ---------------------------------------------------------------------------
 // Einstellungen
 // ---------------------------------------------------------------------------
 
-const settings = { toon: false };
+const settings = { toon: false, renderInfo: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch { /* egal */ }
 
 function saveSettings() {
@@ -733,6 +735,13 @@ toonBox.addEventListener('change', () => {
   saveSettings();
   for (const p of livePieces) applyPieceStyle(p);
 });
+renderInfoBox.checked = settings.renderInfo;
+statsEl.hidden = !settings.renderInfo;
+renderInfoBox.addEventListener('change', () => {
+  settings.renderInfo = renderInfoBox.checked;
+  saveSettings();
+  statsEl.hidden = !settings.renderInfo;
+});
 
 // ---------------------------------------------------------------------------
 // Render-Schleife
@@ -748,6 +757,20 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// FPS werden über ein halbsekündiges Fenster gemittelt
+let fps = 0;
+let fpsFrames = 0;
+let fpsStart = performance.now();
+function updateStats() {
+  fpsFrames++;
+  const now = performance.now();
+  if (now - fpsStart < 500) return;
+  fps = fpsFrames * 1000 / (now - fpsStart);
+  fpsFrames = 0;
+  fpsStart = now;
+  if (settings.renderInfo) statsEl.textContent = `${fps.toFixed(0)} FPS`;
+}
+
 const timer = new THREE.Timer();
 renderer.setAnimationLoop(() => {
   timer.update();
@@ -756,6 +779,7 @@ renderer.setAnimationLoop(() => {
   for (const p of livePieces) p.mixer.update(dt);
   controls.update();
   renderer.render(scene, camera);
+  updateStats();
 });
 
 // ---------------------------------------------------------------------------
@@ -774,6 +798,7 @@ window.chessApp = {
   },
   pieceCount: () => pieces.size,
   toon: () => settings.toon,
+  fps: () => fps,
   // Bildschirmkoordinaten (CSS-Pixel) eines Feldmittelpunkts
   squareToScreen: (sq) => {
     const v = squareToPos(sq).project(camera);

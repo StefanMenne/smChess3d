@@ -17,6 +17,7 @@
 </head>
 <body>
   <div id="scene"></div>
+  <div id="stats" data-testid="stats" hidden></div>
 
   <aside id="panel">
     <header>
@@ -69,6 +70,10 @@
       <label class="option">
         <input type="checkbox" id="toon" data-testid="toon">
         <span>Toon-Rendering</span>
+      </label>
+      <label class="option">
+        <input type="checkbox" id="renderInfo" data-testid="render-info">
+        <span>Rendering-Infos anzeigen</span>
       </label>
       <button id="settingsClose" data-testid="settings-close">Schließen</button>
     </div>
