@@ -77,7 +77,7 @@ const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enablePan = false;
 controls.enableDamping = true;
-controls.minDistance = 7;
+controls.minDistance = 3;
 controls.maxDistance = 22;
 controls.maxPolarAngle = 1.3;
 controls.target.set(0, 0, 0);
