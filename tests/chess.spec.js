@@ -119,3 +119,14 @@ test('Einstellungen: Toon-Rendering lässt sich einschalten und bleibt gespeiche
   expect(await page.evaluate(() => window.chessApp.toon())).toBe(true);
   await expect(page.getByTestId('toon')).toBeChecked();
 });
+
+test('Einstellungen: Rendering-Infos zeigen die FPS an', async ({ page }) => {
+  await expect(page.getByTestId('stats')).toBeHidden();
+  await page.getByTestId('settings').click();
+  await page.getByTestId('render-info').check();
+  await page.getByTestId('settings-close').click();
+  await expect(page.getByTestId('stats')).toHaveText(/^\d+ FPS$/);
+  await page.reload();
+  await page.waitForSelector('body[data-ready="1"]', { timeout: 30_000 });
+  await expect(page.getByTestId('stats')).toBeVisible();
+});

@@ -122,6 +122,18 @@ button:disabled { opacity: 0.45; cursor: default; }
 #settings .option input { width: 18px; height: 18px; accent-color: var(--accent); }
 #settings button { align-self: flex-end; }
 
+#stats {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 6px;
+  font: 12px/1.4 ui-monospace, Consolas, monospace;
+  color: var(--text);
+  pointer-events: none;
+}
+
 #loading {
   position: fixed;
   inset: 0;
