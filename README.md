@@ -2,6 +2,8 @@
 
 ![Spielszene](docs/screenshot.jpg)
 
+[![Spielablauf (anklicken für das Video)](docs/spiel.webp)](docs/spiel.mp4)
+
 ## Starten
 
 Linux/macOS: `./start.sh`, Windows: Doppelklick auf `start.bat`. Beim ersten Start werden die
@@ -46,6 +48,8 @@ Die Werkzeuge die lokal betrieben wurden sind:
      Zugrücknahme und ob der Computer ein Matt in einem Zug findet.
 
 ![Bildvorlagen: Idee, weiß, schwarz](docs/vorlagen.jpg)
+
+[![Die weißen Figuren mit ihrer Laufanimation (anklicken für das Video)](docs/figuren.webp)](docs/figuren.mp4)
 
 ## Aufbau
 

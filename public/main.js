@@ -63,19 +63,24 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+// AgX wie in Blender: helle Flächen (weiße Felder und Figuren) laufen nicht ins
+// flache Weiß aus, Farben bleiben pastellig statt wie bei ACES nachzudunkeln
+renderer.toneMapping = THREE.AgXToneMapping;
+renderer.toneMappingExposure = 1.0;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x24262c);
-scene.fog = new THREE.Fog(0x24262c, 22, 45);
+// Hellgrauer Studiohintergrund wie im Blender-Video
+scene.background = new THREE.Color(0xb4b8bf);
+scene.fog = new THREE.Fog(0xb4b8bf, 22, 45);
 
 // Umgebung für Spiegelungen – ohne sie bleiben metallische Flächen (z. B. die
 // goldenen Kronen) schwarz, da Metall seine Farbe fast nur aus Reflexionen bezieht
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.6;
+// Weiches Umgebungslicht trägt den Großteil der Beleuchtung (wie die Welt-
+// beleuchtung in Blender), die Sonne setzt nur Richtung und Schatten
+scene.environmentIntensity = 0.75;
 pmrem.dispose();
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
@@ -87,19 +92,23 @@ controls.maxDistance = 22;
 controls.maxPolarAngle = 1.3;
 controls.target.set(0, 0, 0);
 
-scene.add(new THREE.HemisphereLight(0xfff4e0, 0x3a3428, 0.8));
-const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-sun.position.set(5, 12, 6);
+scene.add(new THREE.HemisphereLight(0xfff4e0, 0x5a4a38, 0.35));
+// Leicht warme, flacher stehende Sonne: längere Schatten modellieren die Figuren
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
+sun.position.set(6, 9, 7);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.left = -7;
 sun.shadow.camera.right = 7;
 sun.shadow.camera.top = 7;
 sun.shadow.camera.bottom = -7;
-sun.shadow.bias = -0.0005;
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.02;
+// Weiche Schattenkanten wie von einer Flächenleuchte
+sun.shadow.radius = 4;
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0xbcd0ff, 0.5);
-fill.position.set(-6, 6, -5);
+const fill = new THREE.DirectionalLight(0xc8d8ff, 0.35);
+fill.position.set(-6, 5, -5);
 scene.add(fill);
 
 function squareToPos(sq) {
@@ -121,7 +130,8 @@ function buildBoard() {
   const board = new THREE.Group();
   const light = new THREE.MeshStandardMaterial({ color: 0xe8d4ae, roughness: 0.55 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x8f6340, roughness: 0.55 });
-  const geo = new THREE.BoxGeometry(1, 0.12, 1);
+  // Felder minimal kleiner als 1, die dunkle Grundplatte darunter bildet feine Fugen
+  const geo = new THREE.BoxGeometry(0.985, 0.12, 0.985);
   for (let f = 0; f < 8; f++) {
     for (let r = 0; r < 8; r++) {
       const m = new THREE.Mesh(geo, (f + r) % 2 === 0 ? dark : light);
@@ -130,6 +140,12 @@ function buildBoard() {
       board.add(m);
     }
   }
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(8, 0.1, 8),
+    new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 }),
+  );
+  base.position.y = -0.07;
+  board.add(base);
   const frame = new THREE.Mesh(
     new THREE.BoxGeometry(9.3, 0.3, 9.3),
     new THREE.MeshStandardMaterial({ color: 0x4a2f1e, roughness: 0.45 }),
@@ -140,7 +156,7 @@ function buildBoard() {
 
   const table = new THREE.Mesh(
     new THREE.CircleGeometry(30, 64),
-    new THREE.MeshStandardMaterial({ color: 0x2c2a28, roughness: 0.9 }),
+    new THREE.MeshStandardMaterial({ color: 0x7d808a, roughness: 0.9 }),
   );
   table.rotation.x = -Math.PI / 2;
   table.position.y = -0.33;
@@ -323,6 +339,22 @@ async function loadModels() {
 
 const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
 
+// Weicher Kontaktschatten unter jeder Figur – ersetzt die Umgebungsverdeckung (AO),
+// die Blender beim Rendern mitberechnet und die der Shadow Map fehlt
+const contactShadowMat = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(0,0,0,0.45)');
+  grad.addColorStop(0.35, 'rgba(0,0,0,0.2)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false });
+})();
+const contactShadowGeo = new THREE.PlaneGeometry(0.72, 0.72).rotateX(-Math.PI / 2);
+
 function createPiece(color, type, square) {
   const tpl = templates[color + type];
   const group = new THREE.Group();
@@ -337,6 +369,10 @@ function createPiece(color, type, square) {
   const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.4, h, 12), hitMat);
   hit.position.y = h / 2;
   group.add(hit);
+
+  const contact = new THREE.Mesh(contactShadowGeo, contactShadowMat);
+  contact.position.y = 0.002;
+  group.add(contact);
 
   group.position.copy(squareToPos(square));
   group.rotation.y = BASE_YAW[color];
