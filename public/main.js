@@ -15,6 +15,11 @@ const COLOR_FILE = { w: 'weiss', b: 'schwarz' };
 const PIECE_NAME = { p: 'Bauer', n: 'Springer', b: 'Läufer', r: 'Turm', q: 'Dame', k: 'König' };
 const PIECE_SCALE = 1.05;
 const WALK_SPEED = 2.2; // Felder pro Sekunde
+const TURN_TIME = 0.22; // s zum Umdrehen in Laufrichtung
+// Bauer (Hase): gleichmäßige Sprünge, vorwärts nur in der Flugphase des Walk-Clips
+const PAWN_HOPS_PER_SQUARE = 2; // 1–3
+const PAWN_HOP_TIME = 0.42; // s pro Sprung (Walk-Clip wird darauf beschleunigt)
+const HOP_AIR = [0.3, 0.82]; // Abstoßen bis Landung im Clip (Anteile, tools/rig_biped.py --mode hop)
 // Die Modelle schauen in +Z. Weiß steht bei +Z und soll nach -Z (zu Schwarz) schauen.
 const BASE_YAW = { w: Math.PI, b: 0 };
 const MIN_THINK_MS = 450;
@@ -377,26 +382,66 @@ function stopWalking(piece) {
   piece.idle.crossFadeFrom(piece.walk, 0.25, false);
 }
 
-async function turnTo(piece, yaw, duration = 0.22) {
+async function turnTo(piece, yaw, duration = TURN_TIME) {
   const from = piece.group.rotation.y;
   await tween(duration, (t) => { piece.group.rotation.y = angleLerp(from, yaw, t); });
 }
 
-async function walkPiece(piece, toSquare, { hop = false } = {}) {
+// Der Springer läuft zwischen den Figuren: zur Feldecke, an der Feldkante entlang, von der Ecke ins Ziel.
+function movePath(type, from, to) {
+  if (type !== 'n') return [from, to];
+  const sx = Math.sign(to.x - from.x) * 0.5;
+  const sz = Math.sign(to.z - from.z) * 0.5;
+  return [from, new THREE.Vector3(from.x + sx, 0, from.z + sz), new THREE.Vector3(to.x - sx, 0, to.z - sz), to];
+}
+
+const pawnHops = (dist) => Math.max(1, Math.round(dist * PAWN_HOPS_PER_SQUARE));
+
+// Dauer des Laufens ohne das Drehen am Anfang (für das Timing beim Schlagen)
+function moveDuration(type, from, to) {
+  if (type === 'p') return pawnHops(from.distanceTo(to)) * PAWN_HOP_TIME;
+  const path = movePath(type, from, to);
+  let t = 0;
+  for (let i = 1; i < path.length; i++) {
+    t += Math.max(path.length === 2 ? 0.5 : 0, path[i - 1].distanceTo(path[i]) / WALK_SPEED);
+    if (i > 1) t += TURN_TIME;
+  }
+  return t;
+}
+
+async function hopPiece(piece, from, to) {
+  await turnTo(piece, Math.atan2(to.x - from.x, to.z - from.z));
+  const n = pawnHops(from.distanceTo(to));
+  startWalking(piece); // Clip beginnt mit dem ersten Sprung
+  piece.walk.setEffectiveTimeScale(piece.walk.getClip().duration / PAWN_HOP_TIME);
+  await tween(n * PAWN_HOP_TIME, (t) => {
+    const h = Math.min(t * n, n - 1e-6);
+    const i = Math.floor(h);
+    const u = Math.min(1, Math.max(0, (h - i - HOP_AIR[0]) / (HOP_AIR[1] - HOP_AIR[0])));
+    piece.group.position.lerpVectors(from, to, (i + ease(u)) / n);
+  }, (t) => t);
+  stopWalking(piece);
+}
+
+async function walkPiece(piece, toSquare) {
   const from = piece.group.position.clone();
   const to = squareToPos(toSquare);
-  const dir = to.clone().sub(from);
-  const dist = dir.length();
-  if (dist < 1e-6) return;
+  if (from.distanceTo(to) < 1e-6) return;
 
-  startWalking(piece);
-  await turnTo(piece, Math.atan2(dir.x, dir.z));
-  const duration = Math.max(0.5, dist / WALK_SPEED);
-  await tween(duration, (t) => {
-    piece.group.position.lerpVectors(from, to, t);
-    piece.group.position.y = hop ? Math.sin(Math.PI * t) * 0.9 : 0;
-  }, hop ? (t) => t : ease);
-  stopWalking(piece);
+  if (piece.type === 'p') {
+    await hopPiece(piece, from, to);
+  } else {
+    startWalking(piece);
+    const path = movePath(piece.type, from, to);
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1];
+      const b = path[i];
+      await turnTo(piece, Math.atan2(b.x - a.x, b.z - a.z));
+      const duration = Math.max(path.length === 2 ? 0.5 : 0, a.distanceTo(b) / WALK_SPEED);
+      await tween(duration, (t) => { piece.group.position.lerpVectors(a, b, t); });
+    }
+    stopWalking(piece);
+  }
   await turnTo(piece, BASE_YAW[piece.color], 0.3);
 }
 
@@ -450,14 +495,13 @@ async function animateMove(move) {
   }
 
   const jobs = [];
-  const walking = walkPiece(mover, move.to, { hop: move.piece === 'n' });
+  const walking = walkPiece(mover, move.to);
   jobs.push(walking);
 
   if (victim) {
     // Die geschlagene Figur fällt um, kurz bevor der Angreifer ankommt
-    const dist = squareToPos(move.from).distanceTo(squareToPos(move.to));
-    const travel = Math.max(0.5, dist / WALK_SPEED);
-    jobs.push(wait((0.22 + travel * 0.6) * 1000).then(() => capturePiece(victim)));
+    const travel = moveDuration(move.piece, squareToPos(move.from), squareToPos(move.to));
+    jobs.push(wait((TURN_TIME + travel * 0.6) * 1000).then(() => capturePiece(victim)));
   }
 
   if (move.flags.includes('k') || move.flags.includes('q')) {
