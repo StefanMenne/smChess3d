@@ -676,11 +676,61 @@ async function onSquareClicked(sq) {
   refreshMarks();
 }
 
+// Startansicht: fester Blickwinkel, Abstand so gewählt, dass die 64 Felder (ohne Rand)
+// das Bild maximal ausfüllen. Die perspektivische Asymmetrie (hintere Reihe erscheint
+// kleiner) wird per vertikalem Lens-Shift ausgeglichen, damit oben kein Platz verloren geht.
+const HOME_ELEVATION = Math.atan2(10.5, 9.5);
+const HOME_MARGIN = 0.96; // Anteil des Bildes, den das Brett höchstens einnimmt
+const HOME_TOP_HEIGHT = 1.1; // > 0 hält auch Figuren dieser Höhe auf der hinteren Reihe im Bild
+const fitCam = new THREE.PerspectiveCamera();
+const boardCorners = [[-4, -4, HOME_TOP_HEIGHT], [4, -4, HOME_TOP_HEIGHT], [-4, 4, 0], [4, 4, 0]]
+  .map(([x, z, y]) => new THREE.Vector3(x, y, z));
+let homeFit = { dist: 14, shift: 0 };
+let atHome = true;
+
+function projectBoard(dist) {
+  fitCam.position.set(0, Math.sin(HOME_ELEVATION) * dist, Math.cos(HOME_ELEVATION) * dist);
+  fitCam.lookAt(0, 0, 0);
+  fitCam.updateMatrixWorld();
+  let xMax = 0, yMin = Infinity, yMax = -Infinity;
+  for (const c of boardCorners) {
+    const v = c.clone().project(fitCam);
+    xMax = Math.max(xMax, Math.abs(v.x));
+    yMin = Math.min(yMin, v.y);
+    yMax = Math.max(yMax, v.y);
+  }
+  return { xMax, yMin, yMax };
+}
+
+function computeHomeFit() {
+  fitCam.fov = camera.fov;
+  fitCam.aspect = camera.aspect;
+  fitCam.near = camera.near;
+  fitCam.far = camera.far;
+  fitCam.updateProjectionMatrix();
+  const fits = (b) => b.xMax <= HOME_MARGIN && b.yMax - b.yMin <= 2 * HOME_MARGIN;
+  let lo = 4, hi = 60;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(projectBoard(mid))) hi = mid; else lo = mid;
+  }
+  const b = projectBoard(hi);
+  // Oberkante des Bretts an die Oberkante des Bildes (mit gleichem Randanteil) schieben
+  homeFit = { dist: hi, shift: HOME_MARGIN - b.yMax };
+}
+
+function applyLensShift(w, h) {
+  // Positiver Offset verschiebt den Bildausschnitt nach unten, der Inhalt wandert nach oben
+  camera.setViewOffset(w, h, 0, homeFit.shift * h / 2, w, h);
+}
+
 function cameraHome(animated = true) {
   const side = (playerColor === 'w') !== flipped ? 1 : -1;
   // Beschriftung zum Betrachter drehen
   for (const l of labels) l.rotation.z = side > 0 ? 0 : Math.PI;
-  const target = new THREE.Vector3(0, 10.5, 9.5 * side);
+  atHome = true;
+  const d = homeFit.dist;
+  const target = new THREE.Vector3(0, Math.sin(HOME_ELEVATION) * d, Math.cos(HOME_ELEVATION) * d * side);
   if (!animated) { camera.position.copy(target); return; }
   const from = camera.position.clone();
   const r0 = Math.hypot(from.x, from.z);
@@ -796,8 +846,11 @@ function resize() {
   const h = container.clientHeight;
   renderer.setSize(w, h);
   camera.aspect = w / h;
-  camera.updateProjectionMatrix();
+  computeHomeFit();
+  applyLensShift(w, h);
+  if (atHome) cameraHome(false);
 }
+controls.addEventListener('start', () => { atHome = false; });
 window.addEventListener('resize', resize);
 resize();
 
@@ -858,7 +911,7 @@ window.chessApp = {
 // ---------------------------------------------------------------------------
 
 await loadModels();
-camera.position.set(0, 10.5, 9.5);
+cameraHome(false);
 newGame();
 $('loading').classList.add('done');
 document.body.dataset.ready = '1';
