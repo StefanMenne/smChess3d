@@ -13,11 +13,12 @@ Abhängigkeiten und Chromium automatisch installiert (Node.js muss vorhanden sei
 ## Wie das Spiel entstanden ist
 
 Ohne eigenes Modellieren oder Zeichnen: Die Figuren stammen aus lokal laufenden KI-Modellen auf einem
-**Asus Ascent GX10** (NVIDIA GB10). Gesteuert hat das **Claude Code**. Über selbst geschriebene Skills
+**Asus Ascent GX10** (NVIDIA GB10). Gesteuert wurde das Ganze von **Claude Code**. Über selbst geschriebene Skills
 kennt es die Werkzeuge auf dem GX10 und ihre Eigenheiten, startet sie per SSH, holt die Ergebnisse ab und
 prüft sie anhand gerenderter Vorschaubilder. Die Auswahl und das Feedback (welche Variante, was stört)
 kamen von mir.
-Die Werkzeuge die lokal betrieben wurden sind:
+
+Die Werkzeuge, die lokal betrieben wurden, sind:
  - FLUX.2 [klein]
  - TRELLIS.2 
  - Blender
@@ -29,19 +30,18 @@ Die Werkzeuge die lokal betrieben wurden sind:
 2. **3D-Modell:** TRELLIS.2 macht aus einem einzigen Bild ein texturiertes 3D-Mesh.
 3. **Nachbearbeitung in Blender**, per Skript ohne Oberfläche: Texturfarben korrigieren, Augen
    nachbessern, Skelett einsetzen (Vierbeiner, Zweibeiner, Schnecke) und die Animationen `Idle` und `Walk`
-   berechnen. Beine werden per Inverser Kinematik geführt, damit die Füße beim Laufen am Boden bleiben.
+   berechnen. Beine werden per inverser Kinematik geführt, damit die Füße beim Laufen am Boden bleiben.
 4. **Spiel:** Ebenfalls mit Claude Code geschrieben, im Browser mit JavaScript.
    - **Grafik:** Three.js lädt die Figuren als glTF, spielt ihre `Idle`- und `Walk`-Animationen ab und
      stellt die Szene mit Schatten und frei drehbarer Kamera dar.
    - **Regeln:** chess.js erzeugt die legalen Züge und erkennt Schach, Matt und Remis. Damit sind auch
      Rochade, en passant und Bauernumwandlung abgedeckt. Eine Engine hat chess.js selbst nicht.
-   - **Computergegner:** Von Opus 5.5 programmiert auf basis von Tomasz Michniewskis
+   - **Computergegner:** Von Opus 5.5 programmiert auf Basis von Tomasz Michniewskis
      [Simplified Evaluation Function](https://www.chessprogramming.org/Simplified_Evaluation_Function).
      Die Suche ist ein Negamax mit Alpha-Beta-Schnitten, iterativer Vertiefung,
      Ruhesuche über Schlagzüge (damit Abtausche nicht mittendrin abgebrochen werden) und Zugsortierung
      (Schlagzüge nach dem Prinzip „wertvolles Opfer, billiger Angreifer“ zuerst). Bewertet werden
-     Material und Figuren-Feld-Tabellen, mit eigener Königstabelle fürs Endspiel. Figurenwerte und
-     Tabellen stammen aus 
+     Material und Figuren-Feld-Tabellen, mit eigener Königstabelle fürs Endspiel.
      Die vier Spielstufen unterscheiden sich in Suchtiefe (1 bis 5 Halbzüge), Bedenkzeit (0,3 bis 5
      Sekunden) und einem Zufallsanteil, der auf den unteren Stufen Fehler einbaut.
    - **Tests:** Playwright prüft das Spiel im echten Browser, unter anderem Sonderzüge, Matterkennung,
