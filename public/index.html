@@ -22,7 +22,10 @@
   <aside id="panel">
     <header>
       <h1>Schach</h1>
-      <button id="settingsBtn" class="icon" data-testid="settings" title="Einstellungen" aria-label="Einstellungen">⚙</button>
+      <div class="header-buttons">
+        <button id="infoBtn" class="icon" data-testid="info" title="Info und Lizenzen" aria-label="Info und Lizenzen">ⓘ</button>
+        <button id="settingsBtn" class="icon" data-testid="settings" title="Einstellungen" aria-label="Einstellungen">⚙</button>
+      </div>
     </header>
     <div id="status" data-testid="status">Lade Figuren …</div>
 
@@ -76,6 +79,54 @@
         <span>Rendering-Infos anzeigen</span>
       </label>
       <button id="settingsClose" data-testid="settings-close">Schließen</button>
+    </div>
+  </div>
+
+  <div id="info" class="overlay" data-testid="info-dialog" hidden>
+    <div class="dialog">
+      <h2>Über Schach 3D</h2>
+      <div class="info-body">
+      <p>Schach gegen den Computer mit animierten Tierfiguren. Die Figuren wurden mit lokal laufenden
+        KI-Werkzeugen erzeugt (Bildvorlagen mit FLUX.2, 3D-Modelle mit TRELLIS.2) und in Blender geriggt und
+        animiert. Gesteuert wurde das Ganze mit Claude Code (Anthropic).</p>
+
+      <h3>Im Spiel enthalten</h3>
+      <ul class="licenses">
+        <li><a href="https://github.com/mrdoob/three.js" target="_blank" rel="noopener">three.js</a> 0.186 · MIT
+          <details data-license="licenses/three.js.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/jhlywa/chess.js" target="_blank" rel="noopener">chess.js</a> 1.4 · BSD-2-Clause
+          <details data-license="licenses/chess.js.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/microsoft/playwright" target="_blank" rel="noopener">Playwright</a> 1.64 – Startfenster und Tests · Apache-2.0
+          <details data-license="licenses/playwright.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+      </ul>
+
+      <h3>Zur Erzeugung der Figuren verwendet</h3>
+      <p class="muted">Nicht Teil des Spiels; aufgeführt, weil die Figuren damit entstanden sind.</p>
+      <ul class="licenses">
+        <li><a href="https://huggingface.co/black-forest-labs/FLUX.2-klein-4B" target="_blank" rel="noopener">FLUX.2 [klein] 4B</a> – Black Forest Labs, Bildvorlagen · Apache-2.0
+          <details data-license="licenses/flux2-klein.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/huggingface/diffusers" target="_blank" rel="noopener">Diffusers</a> 0.41 – FLUX ausführen · Apache-2.0
+          <details data-license="licenses/diffusers.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/microsoft/TRELLIS.2" target="_blank" rel="noopener">TRELLIS.2</a> 4B – Microsoft, Bild → 3D-Modell mit Textur · MIT
+          <details data-license="licenses/trellis2.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m" target="_blank" rel="noopener">DINOv3 ViT-L/16</a> – Meta, Bild-Encoder in TRELLIS.2 · DINOv3 License
+          <details data-license="licenses/dinov3.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/ZhengPeng7/BiRefNet" target="_blank" rel="noopener">BiRefNet</a> – Hintergrund freistellen · MIT
+          <details data-license="licenses/birefnet.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/JeffreyXiang/CuMesh" target="_blank" rel="noopener">CuMesh</a> – Mesh-Vereinfachung · MIT
+          <details data-license="licenses/cumesh.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/JeffreyXiang/FlexGEMM" target="_blank" rel="noopener">FlexGEMM</a> – Sparse-Faltung · MIT
+          <details data-license="licenses/flexgemm.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/Dao-AILab/flash-attention" target="_blank" rel="noopener">FlashAttention</a> 2.8.3 · BSD-3-Clause
+          <details data-license="licenses/flash-attention.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/NVlabs/nvdiffrast" target="_blank" rel="noopener">nvdiffrast</a> 0.4.0 – NVIDIA, Textur backen · NVIDIA Source Code License (nicht-kommerziell)
+          <details data-license="licenses/nvdiffrast.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://www.blender.org" target="_blank" rel="noopener">Blender</a> 5.2.2 LTS – Nachbearbeitung, Rig, Animationen · GPL-3.0-or-later
+          <details data-license="licenses/blender.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+      </ul>
+      <p class="muted">Wegen nvdiffrast ist das Spiel samt Figuren nur für nicht-kommerzielle Nutzung gedacht.</p>
+      </div>
+      <button id="infoClose" data-testid="info-close">Schließen</button>
     </div>
   </div>
 

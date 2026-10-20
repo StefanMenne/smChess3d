@@ -1,0 +1,10 @@
+Blender 5.2.2 LTS – https://www.blender.org
+
+Blender ist freie Software unter der GNU General Public License, Version 3 oder später
+(GPL-3.0-or-later). Den vollständigen Lizenztext gibt es unter
+https://www.gnu.org/licenses/gpl-3.0.html und https://www.blender.org/about/license/.
+
+Blender wurde nur als Werkzeug benutzt (Nachbearbeitung, Rig und Animationen der Figuren) und ist
+nicht Teil dieses Spiels. Zu erstellten Dateien schreibt blender.org/about/license:
+"What you create with Blender is your sole property. All your artwork – images or movie files –
+including the .blend files and other data files Blender can write, is free for you to use as you like."

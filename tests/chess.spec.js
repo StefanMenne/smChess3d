@@ -138,3 +138,17 @@ test('Einstellungen: Rendering-Infos zeigen die FPS an', async ({ page }) => {
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30_000 });
   await expect(page.getByTestId('stats')).toBeVisible();
 });
+
+test('Info-Dialog zeigt die Lizenztexte', async ({ page }) => {
+  await page.getByTestId('info').click();
+  const dlg = page.getByTestId('info-dialog');
+  await expect(dlg).toBeVisible();
+  const three = dlg.locator('details[data-license="licenses/three.js.txt"]');
+  await three.locator('summary').click();
+  await expect(three.locator('pre')).toContainText('Permission is hereby granted');
+  for (const f of await dlg.locator('details[data-license]').evaluateAll((ds) => ds.map((d) => d.dataset.license))) {
+    expect((await page.request.get(f)).ok(), f).toBe(true);
+  }
+  await page.getByTestId('info-close').click();
+  await expect(dlg).toBeHidden();
+});

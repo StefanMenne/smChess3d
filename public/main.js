@@ -823,6 +823,22 @@ const settingsDlg = $('settings');
 $('settingsBtn').addEventListener('click', () => { settingsDlg.hidden = false; });
 $('settingsClose').addEventListener('click', () => { settingsDlg.hidden = true; });
 settingsDlg.addEventListener('click', (e) => { if (e.target === settingsDlg) settingsDlg.hidden = true; });
+const infoDlg = $('info');
+$('infoBtn').addEventListener('click', () => { infoDlg.hidden = false; });
+$('infoClose').addEventListener('click', () => { infoDlg.hidden = true; });
+infoDlg.addEventListener('click', (e) => { if (e.target === infoDlg) infoDlg.hidden = true; });
+// Lizenztexte erst beim Aufklappen laden
+for (const d of infoDlg.querySelectorAll('details[data-license]')) {
+  d.addEventListener('toggle', async () => {
+    const pre = d.querySelector('pre');
+    if (!d.open || pre.textContent) return;
+    try {
+      pre.textContent = await (await fetch(d.dataset.license)).text();
+    } catch {
+      pre.textContent = 'Lizenztext konnte nicht geladen werden.';
+    }
+  });
+}
 toonBox.checked = settings.toon;
 toonBox.addEventListener('change', () => {
   settings.toon = toonBox.checked;
