@@ -1,7 +1,15 @@
 import { test, expect } from '@playwright/test';
 
+// Die Feldmitte kann hinter der Figur davor liegen (z.B. d2 hinter der Dame) -> eine Stelle über dem Feld
+// suchen, die die App selbst diesem Feld zuordnet, und dort klicken
 async function clickSquare(page, sq) {
-  const { x, y } = await page.evaluate((s) => window.chessApp.squareToScreen(s), sq);
+  const { x, y } = await page.evaluate((s) => {
+    for (const h of [0, 0.3, 0.6, 0.9, 1.2]) {
+      const p = window.chessApp.squareToScreen(s, h);
+      if (window.chessApp.squareAtScreen(p.x, p.y) === s) return p;
+    }
+    return window.chessApp.squareToScreen(s);
+  }, sq);
   await page.mouse.click(x, y);
 }
 

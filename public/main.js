@@ -843,12 +843,14 @@ window.chessApp = {
   pieceCount: () => pieces.size,
   toon: () => settings.toon,
   fps: () => fps,
-  // Bildschirmkoordinaten (CSS-Pixel) eines Feldmittelpunkts
-  squareToScreen: (sq) => {
-    const v = squareToPos(sq).project(camera);
+  // Bildschirmkoordinaten (CSS-Pixel) eines Feldmittelpunkts, optional in einer Höhe darüber
+  squareToScreen: (sq, height = 0) => {
+    const v = squareToPos(sq).setY(height).project(camera);
     const rect = renderer.domElement.getBoundingClientRect();
     return { x: rect.left + (v.x + 1) / 2 * rect.width, y: rect.top + (1 - v.y) / 2 * rect.height };
   },
+  // Feld, das ein Klick an dieser Bildschirmstelle treffen würde (gleiche Logik wie beim echten Klick)
+  squareAtScreen: (x, y) => squareAtEvent({ clientX: x, clientY: y }),
 };
 
 // ---------------------------------------------------------------------------
