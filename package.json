@@ -1,6 +1,7 @@
 {
   "name": "schach-3d",
   "version": "1.0.0",
+  "private": true,
   "description": "3D-Schach gegen den Computer (Three.js + Playwright)",
   "main": "start.js",
   "scripts": {
@@ -8,8 +9,8 @@
     "serve": "node server.js",
     "test": "playwright test"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "Stefan Menne",
+  "license": "UNLICENSED",
   "type": "module",
   "dependencies": {
     "chess.js": "^1.4.0",

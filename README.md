@@ -94,9 +94,13 @@ Keine dieser Komponenten wird mit dem Spiel ausgeliefert, nur die damit erzeugte
 Hinweise:
 
 - **nvdiffrast** darf laut Lizenz nur „non-commercially … for research or evaluation purposes only“
-  genutzt werden. Ob das auch für die damit gebackenen Texturen gilt, ist nicht eindeutig. Das Spiel ist
-  deshalb nur für die nicht-kommerzielle Nutzung gedacht.
+  genutzt werden. Ob das auch für die damit gebackenen Texturen gilt, ist nicht eindeutig.
 - Die Original-Konfiguration von TRELLIS.2 nennt **RMBG-2.0** (briaai, CC BY-NC 4.0) zum Freistellen.
   Verwendet wurde stattdessen BiRefNet (MIT).
 - **DINOv3 License**: Weitergabe der Modellgewichte nur zusammen mit dem Lizenztext. Weitergegeben
   werden hier nur die damit erzeugten Figuren, der Lizenztext liegt trotzdem bei.
+
+## Lizenz
+
+Für dieses Projekt wird keine Lizenz vergeben, alle Rechte vorbehalten. Die eingebundenen Bibliotheken
+und verwendeten Werkzeuge stehen unter ihren jeweiligen Lizenzen (siehe oben).
