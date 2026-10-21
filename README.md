@@ -10,19 +10,17 @@ Linux/macOS: `./start.sh`, Windows: Doppelklick auf `start.bat`. Beim ersten Sta
 Abhängigkeiten und Chromium automatisch installiert (Node.js muss vorhanden sein).
 
 
-## Wie das Spiel entstanden ist
+## Erstellung des Spiels
 
-Ohne eigenes Modellieren oder Zeichnen: Die Figuren stammen aus lokal laufenden KI-Modellen auf einem
-**Asus Ascent GX10** (NVIDIA GB10). Gesteuert wurde das Ganze von **Claude Code**. Über selbst geschriebene Skills
-kennt es die Werkzeuge auf dem GX10 und ihre Eigenheiten, startet sie per SSH, holt die Ergebnisse ab und
-prüft sie anhand gerenderter Vorschaubilder. Die Auswahl und das Feedback (welche Variante, was stört)
-kamen von mir.
+Der Code und die 3D-Figuren sind per Agent Coding mit **Claude Code** entstanden.
+Für die Figuren hat Claude Code Aufgaben an einen Remote-Rechner delegiert, einen **Asus Ascent GX10**
+(NVIDIA GB10), auf dem lokale KI-Modelle eingerichtet sind. Über eigens dafür geschriebene Skills weiß
+Claude Code, wie es auf den Rechner zugreift und die Werkzeuge dort ausführt.
 
 Die Werkzeuge, die lokal betrieben wurden, sind:
  - FLUX.2 [klein]
- - TRELLIS.2 
+ - TRELLIS.2
  - Blender
-
 
 1. **Bildvorlagen:** Aus groben Ideen erzeugt FLUX.2 [klein] Varianten jeder Figur im Look von
    Spielzeugfiguren, ohne Konturen und in Dreiviertelansicht. Daraus entstehen je eine weiße und eine
