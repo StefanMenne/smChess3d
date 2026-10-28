@@ -14,18 +14,20 @@ Abhängigkeiten und Chromium automatisch installiert (Node.js muss vorhanden sei
 
 Der Code und die 3D-Figuren sind per Agent Coding mit **Claude Code** entstanden.
 Für die Figuren hat Claude Code Aufgaben an einen Remote-Rechner delegiert, einen **Asus Ascent GX10**
-(NVIDIA GB10), auf dem lokale KI-Modelle eingerichtet sind. Über eigens dafür geschriebene Skills weiß
-Claude Code, wie es auf den Rechner zugreift und die Werkzeuge dort ausführt.
+(NVIDIA GB10), auf dem lokale KI-Modelle eingerichtet sind. Server, Werkzeuge und das Claude-Code-Plugin
+mit den Skills dafür stammen aus [gb10-assets](https://github.com/StefanMenne/gb10-assets). Über die
+Skills weiß Claude Code, wie es auf den Rechner zugreift und die Werkzeuge dort ausführt.
 
 Die Werkzeuge, die lokal betrieben wurden, sind:
  - FLUX.2 [klein]
- - TRELLIS.2
+ - ComfyUI
  - Blender
 
 1. **Bildvorlagen:** Aus groben Ideen erzeugt FLUX.2 [klein] Varianten jeder Figur im Look von
    Spielzeugfiguren, ohne Konturen und in Dreiviertelansicht. Daraus entstehen je eine weiße und eine
    schwarze Fassung.
-2. **3D-Modell:** TRELLIS.2 macht aus einem einzigen Bild ein texturiertes 3D-Mesh.
+2. **3D-Modell:** ComfyUI macht mit seiner Workflow-Vorlage „Pixal3D & TRELLIS.2: Image to Model“ aus
+   einem einzigen Bild ein texturiertes 3D-Mesh.
 3. **Nachbearbeitung in Blender**, per Skript ohne Oberfläche: Texturfarben korrigieren, Augen
    nachbessern, Skelett einsetzen (Vierbeiner, Zweibeiner, Schnecke) und die Animationen `Idle` und `Walk`
    berechnen. Beine werden per inverser Kinematik geführt, damit die Füße beim Laufen am Boden bleiben.
@@ -82,23 +84,9 @@ Keine dieser Komponenten wird mit dem Spiel ausgeliefert, nur die damit erzeugte
 |---|---|---|---|
 | Claude Code (Anthropic) | Steuerung der Werkzeuge, Skripte, Spielcode | Nutzungsbedingungen von Anthropic | https://claude.com/claude-code |
 | FLUX.2 [klein] 4B (Black Forest Labs) | Bildvorlagen | Apache-2.0 | https://huggingface.co/black-forest-labs/FLUX.2-klein-4B |
-| Diffusers 0.41.0 | FLUX ausführen | Apache-2.0 | https://github.com/huggingface/diffusers |
-| TRELLIS.2 (Microsoft), Modell `TRELLIS.2-4B`, inkl. O-Voxel | Bild → 3D-Mesh mit Textur | MIT | https://github.com/microsoft/TRELLIS.2 |
-| DINOv3 ViT-L/16 (Meta) | Bild-Encoder in TRELLIS.2 | DINOv3 License | https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m |
-| BiRefNet | Hintergrund freistellen | MIT | https://github.com/ZhengPeng7/BiRefNet |
-| CuMesh, FlexGEMM | Mesh-Vereinfachung, Sparse-Faltung | MIT | https://github.com/JeffreyXiang/CuMesh, https://github.com/JeffreyXiang/FlexGEMM |
-| FlashAttention 2.8.3 | Attention in TRELLIS.2 | BSD-3-Clause | https://github.com/Dao-AILab/flash-attention |
-| nvdiffrast 0.4.0 (NVIDIA) | Textur backen | NVIDIA Source Code License, **nur nicht-kommerziell** | https://github.com/NVlabs/nvdiffrast |
+| Diffusers | FLUX ausführen | Apache-2.0 | https://github.com/huggingface/diffusers |
+| ComfyUI 0.42.1 | Bild → 3D-Mesh mit Textur | GPL-3.0 (gilt nicht für erstellte Dateien) | https://github.com/Comfy-Org/ComfyUI |
 | Blender 5.2.2 LTS | Nachbearbeitung, Rig, Animationen, Video | GPL-3.0-or-later (gilt nicht für erstellte Dateien) | https://www.blender.org |
-
-Hinweise:
-
-- **nvdiffrast** darf laut Lizenz nur „non-commercially … for research or evaluation purposes only“
-  genutzt werden. Ob das auch für die damit gebackenen Texturen gilt, ist nicht eindeutig.
-- Die Original-Konfiguration von TRELLIS.2 nennt **RMBG-2.0** (briaai, CC BY-NC 4.0) zum Freistellen.
-  Verwendet wurde stattdessen BiRefNet (MIT).
-- **DINOv3 License**: Weitergabe der Modellgewichte nur zusammen mit dem Lizenztext. Weitergegeben
-  werden hier nur die damit erzeugten Figuren, der Lizenztext liegt trotzdem bei.
 
 ## Lizenz
 

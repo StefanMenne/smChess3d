@@ -1,0 +1,8 @@
+ComfyUI v0.42.1 – https://github.com/Comfy-Org/ComfyUI
+
+ComfyUI ist freie Software unter der GNU General Public License, Version 3 (GPL-3.0). Den
+vollständigen Lizenztext gibt es unter https://www.gnu.org/licenses/gpl-3.0.html.
+
+ComfyUI wurde nur als Werkzeug benutzt (Bild → 3D-Modell mit Textur, mit der Workflow-Vorlage
+"Pixal3D & TRELLIS.2: Image to Model") und ist nicht Teil dieses Spiels. Die GPL regelt das
+Kopieren, Ändern und Weitergeben des Programms selbst, nicht die damit erzeugten Dateien.
