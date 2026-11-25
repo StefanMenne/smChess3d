@@ -24,7 +24,6 @@
       <h1>Schach</h1>
       <div class="header-buttons">
         <button id="infoBtn" class="icon" data-testid="info" title="Info und Lizenzen" aria-label="Info und Lizenzen">ⓘ</button>
-        <button id="settingsBtn" class="icon" data-testid="settings" title="Einstellungen" aria-label="Einstellungen">⚙</button>
       </div>
     </header>
     <div id="status" data-testid="status">Lade Figuren …</div>
@@ -54,10 +53,15 @@
     <div class="controls look" data-testid="light-panel">
       <label>Figuren <select id="pieceSet" data-testid="piece-set"></select></label>
       <label>Brett <select id="boardSet" data-testid="board-set"></select></label>
-      <details id="moreSettings"><summary>Weitere Einstellungen</summary>
+      <details id="moreSettings" data-testid="settings"><summary>Einstellungen</summary>
         <div id="pieceMaterials" class="materials" hidden>
           <label>Material Weiß <select id="materialWhite" data-testid="material-white"></select></label>
           <label>Material Schwarz <select id="materialBlack" data-testid="material-black"></select></label>
+        </div>
+        <div class="options">
+          <label><input type="checkbox" id="toon" data-testid="toon"> Toon-Rendering</label>
+          <label><input type="checkbox" id="ao" data-testid="ao"> Umgebungsverdeckung</label>
+          <label><input type="checkbox" id="renderInfo" data-testid="render-info"> Rendering-Infos anzeigen</label>
         </div>
         <div class="sliders">
           <label>Umgebung <span id="lightAmbientVal"></span><input id="lightAmbient" type="range" min="0" max="2" step="0.05"></label>
@@ -83,25 +87,6 @@
         <button data-piece="b">Läufer</button>
         <button data-piece="n">Springer</button>
       </div>
-    </div>
-  </div>
-
-  <div id="settings" class="overlay" hidden>
-    <div class="dialog">
-      <h2>Einstellungen</h2>
-      <label class="option">
-        <input type="checkbox" id="toon" data-testid="toon">
-        <span>Toon-Rendering</span>
-      </label>
-      <label class="option">
-        <input type="checkbox" id="ao" data-testid="ao">
-        <span>Umgebungsverdeckung (schöner, braucht mehr Grafikleistung)</span>
-      </label>
-      <label class="option">
-        <input type="checkbox" id="renderInfo" data-testid="render-info">
-        <span>Rendering-Infos anzeigen</span>
-      </label>
-      <button id="settingsClose" data-testid="settings-close">Schließen</button>
     </div>
   </div>
 

@@ -58,7 +58,7 @@ const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, spring
 //   top:       Höhe der größten Figur (Startansicht hält sie im Bild); sonst aus height bzw. 1,1
 //   matt:      Metallanteile der Textur abschalten (image_to_3d legt oft welche hinein, Holz wirkt sonst bronzen)
 //   walkSpeed: feste Laufgeschwindigkeit in Feldbreiten/s; sonst aus der Schrittlänge des Modells (stride)
-//   materials: Material je Farbe wählbar (PIECE_MATERIALS, Weitere Einstellungen)
+//   materials: Material je Farbe wählbar (PIECE_MATERIALS, Einstellungen im Panel)
 //   rigid:     starre Figuren ohne Animationen: gleiten mit Wippen (models.js rigidMotion)
 //   jump:      je Art Sprung im Bogen dieser Höhe (Feldbreiten) statt Gehen, für starre Figuren
 //   hop:       je Art Hüpfen statt Gehen (perSquare: Sprünge je Feld, time: s je Sprung, air: Abstoßen bis Landung
@@ -956,10 +956,6 @@ undoBtn.addEventListener('click', undo);
 $('flip').addEventListener('click', () => { flipped = !flipped; cameraHome(); });
 colorSel.addEventListener('change', () => newGame());
 
-const settingsDlg = $('settings');
-$('settingsBtn').addEventListener('click', () => { settingsDlg.hidden = false; });
-$('settingsClose').addEventListener('click', () => { settingsDlg.hidden = true; });
-settingsDlg.addEventListener('click', (e) => { if (e.target === settingsDlg) settingsDlg.hidden = true; });
 const infoDlg = $('info');
 $('infoBtn').addEventListener('click', () => { infoDlg.hidden = false; });
 $('infoClose').addEventListener('click', () => { infoDlg.hidden = true; });

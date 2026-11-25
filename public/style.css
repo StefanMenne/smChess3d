@@ -86,7 +86,11 @@ button:disabled { opacity: 0.45; cursor: default; }
 #moreSettings .materials { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 #moreSettings .materials[hidden] { display: none; }
 #moreSettings .materials label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
-#moreSettings .materials select { width: 140px; }
+#moreSettings .materials select { width: 124px; }
+#moreSettings .materials label { white-space: nowrap; }
+#moreSettings .options { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+#moreSettings .options label { display: flex; justify-content: flex-start; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--text); }
+#moreSettings .options input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
 #moreSettings .sliders { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 #moreSettings .sliders label { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13px; }
 #moreSettings .sliders span { color: var(--text); font-variant-numeric: tabular-nums; }
@@ -125,28 +129,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 #promotion .choices { display: flex; gap: 8px; }
 #promotion button { padding: 10px 14px; }
 
-#settings {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.45);
-}
-#settings[hidden] { display: none; }
-#settings .dialog {
-  min-width: 260px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 18px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-#settings h2 { margin: 0; }
-#settings .option { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-#settings .option input { width: 18px; height: 18px; accent-color: var(--accent); }
-#settings button { align-self: flex-end; }
 
 #info {
   position: fixed;

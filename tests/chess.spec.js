@@ -118,9 +118,8 @@ test('Computer findet ein Matt in eins', async ({ page }) => {
 
 test('Einstellungen: Toon-Rendering lässt sich einschalten und bleibt gespeichert', async ({ page }) => {
   expect(await page.evaluate(() => window.chessApp.toon())).toBe(false);
-  await page.getByTestId('settings').click();
+  await page.locator('#moreSettings summary').click();
   await page.getByTestId('toon').check();
-  await page.getByTestId('settings-close').click();
   expect(await page.evaluate(() => window.chessApp.toon())).toBe(true);
   await page.reload();
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30_000 });
@@ -130,9 +129,8 @@ test('Einstellungen: Toon-Rendering lässt sich einschalten und bleibt gespeiche
 
 test('Einstellungen: Rendering-Infos zeigen die FPS an', async ({ page }) => {
   await expect(page.getByTestId('stats')).toBeHidden();
-  await page.getByTestId('settings').click();
+  await page.locator('#moreSettings summary').click();
   await page.getByTestId('render-info').check();
-  await page.getByTestId('settings-close').click();
   await expect(page.getByTestId('stats')).toHaveText(/^\d+ FPS$/);
   await page.reload();
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30_000 });
