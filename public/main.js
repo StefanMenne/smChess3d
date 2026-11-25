@@ -62,7 +62,7 @@ const PIECE_SET_LOOK = {
   schnitz: { height: PIECE_HEIGHT, matt: true },
   // Tierfiguren: Originalgröße × 1,05, Materialien unverändert, der Hasen-Bauer hüpft
   // Gedrechselte Staunton-Figuren (tools/staunton): Weiß Buchsbaum, Schwarz Ebenholz; Höhen aus den Modellen
-  staunton: { scale: 1, top: 1.8, walkSpeed: 1.6, rigid: true, jump: { springer: 0.9 } },
+  staunton: { scale: 1, top: 1.85, walkSpeed: 1.6, rigid: true, jump: { springer: 0.9 } },
   tiere: { scale: 1.05, walkSpeed: 2.2, hop: { bauer: { perSquare: 2, time: 0.42, air: [0.3, 0.82] } } },
 };
 
