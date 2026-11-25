@@ -219,6 +219,9 @@ def knight_head(path, base_top):
     head.data.materials.clear()
     bm = bmesh.new()
     bm.from_mesh(head.data)
+    # Die GLB ist an den Texturnähten aufgetrennt (hunderte Einzelteile): erst verschweißen, sonst entstehen beim
+    # Verkleinern Risse und eine Normalen-Neuberechnung würde offene Teile falsch herum drehen
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
     geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
     res = bmesh.ops.bisect_plane(bm, geom=geom, plane_co=(0, 0, KNIGHT_CUT), plane_no=(0, 0, 1), clear_inner=True)
     cut_edges = [e for e in res["geom_cut"] if isinstance(e, bmesh.types.BMEdge)]
@@ -229,7 +232,12 @@ def knight_head(path, base_top):
     m = Matrix.Translation((0, 0, base_top - 0.005)) @ Matrix.Scale(KNIGHT_SCALE, 4) \
         @ Matrix.Rotation(math.radians(KNIGHT_YAW), 4, "Z") @ Matrix.Translation((-centre.x, -centre.y, -KNIGHT_CUT))
     bmesh.ops.transform(bm, matrix=m, verts=bm.verts)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    # keine recalc_face_normals: das generierte Modell ist schon richtig orientiert; nur die neue Deckfläche des
+    # Schnitts muss nach unten zeigen
+    bm.normal_update()
+    for f in bm.faces:
+        if f.calc_center_median().z < base_top + 0.002 and f.normal.z > 0.9:
+            f.normal_flip()
     bm.to_mesh(head.data)
     bm.free()
     dec = head.modifiers.new("dec", "DECIMATE")
@@ -263,6 +271,7 @@ def wood_material(color, seed):
     light, dark, rough = WOODS[color]
     mat = bpy.data.materials.new(f"holz_{color}_{seed}")
     mat.use_nodes = True
+    mat.use_backface_culling = True   # einseitig exportieren: falsch herum zeigende Flächen fallen sofort auf
     nt = mat.node_tree
     n = nt.nodes
     n.clear()
