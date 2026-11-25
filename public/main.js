@@ -990,7 +990,7 @@ window.chessApp = {
   history: () => game.history(),
   isIdle: () => !busy && !thinking && tweens.size === 0 && [...livePieces].every((p) => !p.fig.walk),
   playerColor: () => playerColor,
-  newGame: (fen) => newGame(fen),
+  newGame: (fen, pgn) => newGame(fen, pgn ? { pgn } : undefined),
   pieceAt: (sq) => {
     const p = pieces.get(sq);
     return p ? p.color + p.type : null;
@@ -1004,6 +1004,13 @@ window.chessApp = {
   sets: () => ({ ...choice }),
   setLight(v) { Object.assign(light, v); for (const [id, p] of SLIDERS) $(id).value = light[p]; applyLight(); },
   toon: () => settings.toon,
+  // Kamera auf eine feste Ansicht stellen (Bilder für die README)
+  setView(pos, target) {
+    atHome = false;
+    camera.position.set(...pos);
+    controls.target.set(...target);
+    controls.update();
+  },
   fps: () => fps,
   // Bildschirmkoordinaten (CSS-Pixel) eines Feldmittelpunkts, optional in einer Höhe darüber
   squareToScreen: (sq, height = 0) => {

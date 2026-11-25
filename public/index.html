@@ -102,8 +102,8 @@
       <h2>Über Schach 3D</h2>
       <div class="info-body">
       <p>Schach gegen den Computer mit animierten Figuren, wahlweise geschnitzt aus Holz oder als Tiere.
-        Die Figuren wurden mit lokal laufenden KI-Werkzeugen erzeugt (Bildvorlagen mit Qwen-Image, 3D-Modelle mit
-        Pixal3D/TRELLIS.2 in ComfyUI). Skelett und Bewegungen haben eigene Blender-Skripte berechnet, ohne fremde
+        Die Figuren wurden mit lokal laufenden KI-Werkzeugen über gb10-assets erzeugt (Bildvorlagen mit
+        Qwen-Image, 3D-Modelle mit Pixal3D/TRELLIS.2 in ComfyUI). Skelett und Bewegungen haben eigene Blender-Skripte berechnet, ohne fremde
         Animationsdaten. Gesteuert wurde das Ganze mit Claude Code (Anthropic).</p>
 
       <h3>Im Spiel enthalten</h3>
@@ -117,17 +117,29 @@
       </ul>
 
       <h3>Zur Erzeugung der Figuren verwendet</h3>
-      <p class="muted">Nicht Teil des Spiels; aufgeführt, weil die Figuren damit entstanden sind.</p>
+      <p class="muted">Nicht Teil des Spiels; aufgeführt, weil die Figuren damit entstanden sind. Alle Werkzeuge liefen
+        lokal auf einem eigenen Rechner (NVIDIA GB10), gesteuert über gb10-assets.</p>
       <ul class="licenses">
-        <li><a href="https://huggingface.co/Qwen/Qwen-Image-2512" target="_blank" rel="noopener">Qwen-Image-2512</a> und
-          <a href="https://huggingface.co/Qwen/Qwen-Image-Edit-2511" target="_blank" rel="noopener">Qwen-Image-Edit-2511</a> – Bildvorlagen · Apache-2.0
+        <li><a href="https://github.com/StefanMenne/gb10-assets" target="_blank" rel="noopener">gb10-assets</a> 3.0.0 – Server und Claude-Code-Plugin für die Werkzeuge unten · MIT
+          <details data-license="licenses/gb10-assets.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://huggingface.co/Qwen/Qwen-Image-2512" target="_blank" rel="noopener">Qwen-Image-2512</a> und Qwen-Image-Edit-2511 (Alibaba Qwen) mit Lightning-LoRAs – Bildvorlagen · Apache-2.0
           <details data-license="licenses/qwen-image.txt"><summary>Lizenztext</summary><pre></pre></details></li>
-        <li><a href="https://github.com/huggingface/diffusers" target="_blank" rel="noopener">Diffusers</a> – Qwen-Image ausführen · Apache-2.0
+        <li><a href="https://github.com/huggingface/diffusers" target="_blank" rel="noopener">Diffusers</a> 0.42 – führt Qwen-Image aus · Apache-2.0
           <details data-license="licenses/diffusers.txt"><summary>Lizenztext</summary><pre></pre></details></li>
-        <li><a href="https://huggingface.co/Comfy-Org/Pixal3D" target="_blank" rel="noopener">Pixal3D</a> auf
-          <a href="https://github.com/microsoft/TRELLIS.2" target="_blank" rel="noopener">TRELLIS.2</a> – Bild → 3D-Modell mit Textur · MIT</li>
-        <li><a href="https://github.com/Comfy-Org/ComfyUI" target="_blank" rel="noopener">ComfyUI</a> 0.42.1 – führt Pixal3D aus · GPL-3.0
+        <li><a href="https://github.com/ZhengPeng7/BiRefNet" target="_blank" rel="noopener">BiRefNet</a> – Freisteller · MIT
+          <details data-license="licenses/birefnet.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://huggingface.co/TencentARC/Pixal3D" target="_blank" rel="noopener">Pixal3D</a> (Tencent) – Bild → 3D-Modell mit Textur · MIT
+          <details data-license="licenses/pixal3d.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/microsoft/TRELLIS.2" target="_blank" rel="noopener">TRELLIS.2</a> (Microsoft) – Form und Textur, Grundlage von Pixal3D · MIT
+          <details data-license="licenses/trellis2.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/microsoft/MoGe" target="_blank" rel="noopener">MoGe-2</a> (Microsoft) – Bildwinkel der Vorlage schätzen · MIT
+          <details data-license="licenses/moge.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/facebookresearch/dinov3" target="_blank" rel="noopener">DINOv3</a> (Meta) – Bild-Encoder in Pixal3D · DINOv3 License
+          <details data-license="licenses/dinov3.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/Comfy-Org/ComfyUI" target="_blank" rel="noopener">ComfyUI</a> 0.46.0 – führt Pixal3D aus · GPL-3.0
           <details data-license="licenses/comfyui.txt"><summary>Lizenztext</summary><pre></pre></details></li>
+        <li><a href="https://github.com/Comfy-Org/workflow_templates" target="_blank" rel="noopener">Workflow-Vorlage</a> „Pixal3D &amp; TRELLIS.2: Image to Model“ (Comfy Org) · MIT
+          <details data-license="licenses/comfyui-workflow.txt"><summary>Lizenztext</summary><pre></pre></details></li>
         <li><a href="https://www.blender.org" target="_blank" rel="noopener">Blender</a> 5.2.2 LTS – Nachbearbeitung, Rig, Animationen · GPL-3.0-or-later
           <details data-license="licenses/blender.txt"><summary>Lizenztext</summary><pre></pre></details></li>
       </ul>
