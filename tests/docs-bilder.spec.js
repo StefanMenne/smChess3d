@@ -50,6 +50,15 @@ test('Schnitzfiguren Nahaufnahme', async ({ page }) => {
   await page.screenshot({ path: `${RAW}/nahaufnahme.png` });
 });
 
+test('Staunton Nahaufnahme', async ({ page }) => {
+  await open(page, '?figurensatz=staunton&brett=schnitz');
+  await hidePanel(page);
+  await midgame(page);
+  await page.evaluate(() => window.chessApp.setView([3.0, 3.3, 6.4], [-0.5, 0.45, 0.7]));
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: `${RAW}/staunton.png` });
+});
+
 test('Tierfiguren im Spiel', async ({ page }) => {
   await open(page, '?figurensatz=tiere&brett=tiere');
   await midgame(page);

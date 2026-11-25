@@ -7,6 +7,8 @@ ist per Agent Coding mit Claude Code entstanden, die Figuren mit lokal betrieben
 
 ![Nahaufnahme der Schnitzfiguren: Weiß aus Esche, Schwarz aus Nussbaum](docs/nahaufnahme.jpg)
 
+![Staunton-Figuren, gedrechselt: Weiß aus Buchsbaum, Schwarz aus Palisander](docs/staunton.jpg)
+
 ## Starten
 
 Linux/macOS: `./start.sh`, Windows: Doppelklick auf `start.bat`. Beim ersten Start werden die
