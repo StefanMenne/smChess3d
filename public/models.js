@@ -159,9 +159,10 @@ export class ModelFigure {
   update(dt) {
     this.mixer.update(dt);
     const w = this.walk;
-    // Blickrichtung: unterwegs in Laufrichtung, sonst die Grundrichtung; weich nachgeführt
+    // Blickrichtung: unterwegs in Laufrichtung, sonst die Grundrichtung; weich nachgeführt. Starre Figuren
+    // (gedrechselt) drehen sich nie, sie gleiten in Grundrichtung (Drehen sieht bei Turm und Co. seltsam aus)
     let yaw = this.homeFacing;
-    if (w) {
+    if (w && !this.model.rigid) {
       const s = w.segs[w.i];
       yaw = Math.atan2(s.to.x - s.from.x, s.to.z - s.from.z);
     }
@@ -204,19 +205,31 @@ export class ModelFigure {
     if (!w) {
       obj.position.y = this.objY;
       obj.rotation.x = 0;
+      obj.rotation.z = 0;
       return;
     }
     const total = w.segs.reduce((t, s) => t + s.duration, 0);
     const done = (w.segs.slice(0, w.i).reduce((t, s) => t + s.duration, 0) + k * seg.duration) / total;
+    // Neigung in Bewegungsrichtung (die Figur dreht sich nicht): Richtung ins eigene Koordinatensystem drehen
+    const dx = seg.to.x - seg.from.x;
+    const dz = seg.to.z - seg.from.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const yaw = this.root.rotation.y;
+    const lx = (dx * Math.cos(yaw) - dz * Math.sin(yaw)) / len;
+    const lz = (dx * Math.sin(yaw) + dz * Math.cos(yaw)) / len;
+    const lean = (a) => {
+      obj.rotation.x = a * lz;    // Oberteil nach +Z
+      obj.rotation.z = -a * lx;   // Oberteil nach +X
+    };
     if (this.model.jump) {
       obj.position.y = this.objY + this.model.jump * 4 * done * (1 - done);
-      obj.rotation.x = 0.25 * (1 - 2 * done);   // Absprung nach vorn geneigt, Landung nach hinten
+      lean(0.25 * (1 - 2 * done));   // Absprung in Sprungrichtung geneigt, Landung dagegen
       return;
     }
-    // kleine Schritte: zwei Wipper je Feldbreite, Neigung nach vorn, am Anfang und Ende weich
+    // kleine Schritte: zwei Wipper je Feldbreite, Neigung in Laufrichtung, am Anfang und Ende weich
     const dist = done * w.segs.reduce((t, s) => t + s.from.distanceTo(s.to), 0);
     const ramp = Math.min(1, done * 6, (1 - done) * 6);
     obj.position.y = this.objY + 0.035 * Math.abs(Math.sin(dist * Math.PI * 2));
-    obj.rotation.x = 0.07 * ramp;
+    lean(0.07 * ramp);
   }
 }
