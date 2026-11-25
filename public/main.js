@@ -91,7 +91,7 @@ const statsEl = $('stats');
 // Einstellungen
 // ---------------------------------------------------------------------------
 
-const settings = { toon: false, renderInfo: false, ao: false, material: { w: 'holz', b: 'holz' } };
+const settings = { toon: false, renderInfo: false, ao: false, material: { w: 'holz', b: 'palisander' } };   // Staunton: Schwarz standardmäßig Palisander
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch { /* egal */ }
 
 function saveSettings() {
