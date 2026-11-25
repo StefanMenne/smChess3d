@@ -91,7 +91,7 @@ const statsEl = $('stats');
 // Einstellungen
 // ---------------------------------------------------------------------------
 
-const settings = { toon: false, renderInfo: false, ao: true, material: { w: 'holz', b: 'holz' } };
+const settings = { toon: false, renderInfo: false, ao: false, material: { w: 'holz', b: 'holz' } };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch { /* egal */ }
 
 function saveSettings() {
@@ -145,8 +145,12 @@ const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const gtao = new GTAOPass(scene, camera, 512, 512);
-gtao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: 8 });
-gtao.blendIntensity = 1.0;
+// Standardmäßig aus: an Silhouetten (Figur vor Figur) erzeugt die Bildschirm-Verdeckung dunkle Säume, und mit der
+// HDR-Umgebung bringt sie wenig. Wenn eingeschaltet: volle Auflösung, kleiner Radius, schwach gemischt (mildert die
+// Säume; verglichen in konzepte/ao/)
+const ao = { res: 1, radius: 0.18, thickness: 0.5, blend: 0.8 };   // res: Anteil der Bildauflösung
+gtao.updateGtaoMaterial({ radius: ao.radius, distanceExponent: 1.5, thickness: ao.thickness, scale: 1.0, samples: 8 });
+gtao.blendIntensity = ao.blend;
 composer.addPass(gtao);
 composer.addPass(new OutputPass());
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -1049,9 +1053,8 @@ function resize() {
   const h = container.clientHeight;
   renderer.setSize(w, h);
   composer.setSize(w, h);
-  // Verdeckung in halber Auflösung: weiche Verläufe, halbe Rechenarbeit
   const pr = renderer.getPixelRatio();
-  gtao.setSize(Math.round(w * pr / 2), Math.round(h * pr / 2));
+  gtao.setSize(Math.round(w * pr * ao.res), Math.round(h * pr * ao.res));
   camera.aspect = w / h;
   computeHomeFit();
   applyLensShift(w, h);
@@ -1111,6 +1114,13 @@ window.chessApp = {
   },
   sets: () => ({ ...choice }),
   // Umgebung justieren (Kalibrierung): Helligkeitsbasis und Drehung um die senkrechte Achse
+  // Umgebungsverdeckung justieren (Vergleich): res, radius, thickness, blend
+  setAO(v) {
+    Object.assign(ao, v);
+    gtao.updateGtaoMaterial({ radius: ao.radius, thickness: ao.thickness });
+    gtao.blendIntensity = ao.blend;
+    resize();
+  },
   setEnv(base, rot) { if (base !== undefined) GROUPS.ambient[0][1] = base; if (rot !== undefined) scene.environmentRotation.y = rot; applyLight(); },
   setLight(v) { Object.assign(light, v); for (const [id, p] of SLIDERS) $(id).value = light[p]; applyLight(); },
   toon: () => settings.toon,
