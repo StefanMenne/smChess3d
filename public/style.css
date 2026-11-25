@@ -20,6 +20,16 @@ html, body {
 
 #scene { position: fixed; inset: 0 312px 0 0; }
 #scene canvas { display: block; }
+/* Lichtstimmung: warmer Lichtkegel auf der Brettmitte, Ränder abgedunkelt */
+#scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 60% at 50% 48%, rgba(255, 220, 170, 0.18), transparent 72%),
+    radial-gradient(ellipse 75% 85% at 50% 50%, transparent 65%, rgba(8, 5, 3, 0.28) 100%);
+}
 
 #panel {
   position: fixed;
@@ -35,6 +45,7 @@ html, body {
   flex-direction: column;
   gap: 12px;
   backdrop-filter: blur(6px);
+  overflow-y: auto;
 }
 
 #panel header { display: flex; justify-content: space-between; align-items: center; }
@@ -68,12 +79,22 @@ button { cursor: pointer; }
 button:hover:not(:disabled) { background: #363a44; }
 button:disabled { opacity: 0.45; cursor: default; }
 
+/* Figuren, Brett und Lichtregler */
+.look { padding-top: 10px; border-top: 1px solid var(--border); }
+.look select { width: 150px; }
+#moreSettings summary { cursor: pointer; color: var(--muted); }
+#moreSettings .sliders { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+#moreSettings .sliders label { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13px; }
+#moreSettings .sliders span { color: var(--text); font-variant-numeric: tabular-nums; }
+#moreSettings .sliders input { grid-column: span 2; width: 100%; margin: 0; accent-color: var(--accent); }
+
 .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .buttons button:first-child { grid-column: span 2; background: #6b4f1c; border-color: #8a6a2e; }
 .buttons button:first-child:hover { background: #7d5d22; }
 
 #moves {
   flex: 1;
+  min-height: 80px;
   overflow-y: auto;
   margin: 0;
   padding: 0 0 0 34px;

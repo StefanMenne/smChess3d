@@ -9,7 +9,6 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const MOUNTS = [
   ['/vendor/three/', path.join(root, 'node_modules/three/')],
   ['/vendor/chess.js', path.join(root, 'node_modules/chess.js/dist/esm/chess.js')],
-  ['/pieces/', path.join(root, 'pieces/')],
   ['/', path.join(root, 'public/')],
 ];
 
@@ -20,6 +19,8 @@ const TYPES = {
   '.glb': 'model/gltf-binary',
   '.json': 'application/json',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.txt': 'text/plain; charset=utf-8',
 };

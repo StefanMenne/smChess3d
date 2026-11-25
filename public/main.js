@@ -1,9 +1,8 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Chess } from 'chess.js';
+import { loadModel, ModelFigure } from './models.js';
 
 // ---------------------------------------------------------------------------
 // Konstanten
@@ -12,14 +11,6 @@ import { Chess } from 'chess.js';
 const FILES = 'abcdefgh';
 const PIECE_FILE = { p: 'bauer', n: 'springer', b: 'laeufer', r: 'turm', q: 'dame', k: 'koenig' };
 const COLOR_FILE = { w: 'weiss', b: 'schwarz' };
-const PIECE_NAME = { p: 'Bauer', n: 'Springer', b: 'Läufer', r: 'Turm', q: 'Dame', k: 'König' };
-const PIECE_SCALE = 1.05;
-const WALK_SPEED = 2.2; // Felder pro Sekunde
-const TURN_TIME = 0.22; // s zum Umdrehen in Laufrichtung
-// Bauer (Hase): gleichmäßige Sprünge, vorwärts nur in der Flugphase des Walk-Clips
-const PAWN_HOPS_PER_SQUARE = 2; // 1–3
-const PAWN_HOP_TIME = 0.42; // s pro Sprung (Walk-Clip wird darauf beschleunigt)
-const HOP_AIR = [0.3, 0.82]; // Abstoßen bis Landung im Clip (Anteile, tools/rig_biped.py --mode hop)
 // Die Modelle schauen in +Z. Weiß steht bei +Z und soll nach -Z (zu Schwarz) schauen.
 const BASE_YAW = { w: Math.PI, b: 0 };
 const MIN_THINK_MS = 450;
@@ -27,6 +18,48 @@ const MIN_THINK_MS = 450;
 // wird die Linie bei weiter entfernten Figuren automatisch dünner.
 const OUTLINE_WIDTH = 0.022;
 const SETTINGS_KEY = 'schach3d.settings';
+const SET_KEY = 'schach3d.auswahl';
+const LIGHT_KEY = 'schach3d.licht';
+// Laufende Partie über den Neuladen beim Wechsel von Brett oder Figuren retten
+const GAME_KEY = 'schach3d.partie';
+
+// Brett und Figurensatz sind getrennt wählbar (beide nutzen 1 Feldbreite = 1 Einheit, Weiß vorn bei +Z).
+// Auswahl im Panel, im Browser gespeichert; ?brett=… / ?figurensatz=… überschreiben sie (für Tests)
+const BOARD_SETS = { schnitz: 'Schnitzbrett', tiere: 'Spielzeugbrett' };
+const PIECE_SETS = { schnitz: 'Schnitzfiguren', tiere: 'Tierfiguren' };
+const choice = { brett: 'schnitz', figuren: 'schnitz' };   // Standard beim ersten Start: Schnitzbrett und -figuren
+try { Object.assign(choice, JSON.parse(localStorage.getItem(SET_KEY))); } catch { /* egal */ }
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get('brett')) choice.brett = q.get('brett');
+  if (q.get('figurensatz')) choice.figuren = q.get('figurensatz');
+}
+if (!BOARD_SETS[choice.brett]) choice.brett = 'schnitz';
+if (!PIECE_SETS[choice.figuren]) choice.figuren = 'schnitz';
+
+// Helligkeit des Brettbilds (unbeleuchtet: Faktor auf die Bildfarben)
+const BOARD_LIGHT = 1.4;
+// Brett-Textur: Kantenlänge der Fläche und Mitte des 8x8-Feldes relativ zur Bildmitte, in Feldbreiten
+// (x nach rechts, y nach unten im Bild = zur weißen Seite)
+const BOARD_PLANE = 10.3957;
+const FIELD_OFFSET = { x: -0.0535, y: -0.0642 };
+const BOARD_THICKNESS = 0.35;
+// Höhe je Figurenart in Feldbreiten (wie bei echten Schachfiguren nach Rang gestaffelt)
+// (Springer: aufrechter Pferdekrieger zwischen Bauer und Läufer; Turm: Rundturm auf Wagen, Deichsel bis zum Feldrand)
+const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, springer: 1.6, turm: 1.2 };
+// Figurensätze: geriggte GLB-Modelle unter assets/sets/<satz>/<art>_<weiss|schwarz>.glb, Clips Idle und
+// WalkInPlace bzw. Walk (auf der Stelle). Was sich je Satz unterscheidet, steht hier:
+//   height:    Figurenhöhe je Art in Feldbreiten; sonst scale: Originalgröße × scale
+//   matt:      Metallanteile der Textur abschalten (image_to_3d legt oft welche hinein, Holz wirkt sonst bronzen)
+//   walkSpeed: feste Laufgeschwindigkeit in Feldbreiten/s; sonst aus der Schrittlänge des Modells (stride)
+//   hop:       je Art Hüpfen statt Gehen (perSquare: Sprünge je Feld, time: s je Sprung, air: Abstoßen bis Landung
+//              als Anteile des Clips; vorwärts nur in der Flugphase)
+const PIECE_SET_LOOK = {
+  // Schnitzfiguren: Weiß Esche, Schwarz Nussbaum; Bewegungen aus tools/anim_figur.py, Turm aus tools/rig_turm.py
+  schnitz: { height: PIECE_HEIGHT, matt: true },
+  // Tierfiguren: Originalgröße × 1,05, Materialien unverändert, der Hasen-Bauer hüpft
+  tiere: { scale: 1.05, walkSpeed: 2.2, hop: { bauer: { perSquare: 2, time: 0.42, air: [0.3, 0.82] } } },
+};
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -55,33 +88,41 @@ function saveSettings() {
 }
 
 // ---------------------------------------------------------------------------
-// Szene
+// Szene und Licht
 // ---------------------------------------------------------------------------
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-// AgX wie in Blender: helle Flächen (weiße Felder und Figuren) laufen nicht ins
-// flache Weiß aus, Farben bleiben pastellig statt wie bei ACES nachzudunkeln
-renderer.toneMapping = THREE.AgXToneMapping;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;   // PCFSoftShadowMap gibt es in three.js 0.186 nicht mehr
+// Neutral (Khronos PBR Neutral): fängt Spitzlichter ab (helles Holz brennt nicht weiß aus), erhält aber
+// Farbton und Sättigung (AgX machte alles grau-blass). Das Brettbild ist ein fertiges Bild und wird davon
+// ausgenommen (toneMapped = false)
+renderer.toneMapping = THREE.NeutralToneMapping;
 renderer.toneMappingExposure = 1.0;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-// Hellgrauer Studiohintergrund wie im Blender-Video
-scene.background = new THREE.Color(0xb4b8bf);
-scene.fog = new THREE.Fog(0xb4b8bf, 22, 45);
-
-// Umgebung für Spiegelungen – ohne sie bleiben metallische Flächen (z. B. die
-// goldenen Kronen) schwarz, da Metall seine Farbe fast nur aus Reflexionen bezieht
+scene.background = new THREE.Color(0x3a2a20);
+// Standard wie in Modell-Viewern: die Umgebung (RoomEnvironment) beleuchtet die PBR-Modelle von allen Seiten
+// weich, dazu eine Sonne für die Schatten (wirkt nur auf beleuchtete Materialien, das Brettbild bleibt unverändert)
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-// Weiches Umgebungslicht trägt den Großteil der Beleuchtung (wie die Welt-
-// beleuchtung in Blender), die Sonne setzt nur Richtung und Schatten
-scene.environmentIntensity = 0.75;
+scene.environmentIntensity = 1.0;
 pmrem.dispose();
+const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+sun.position.set(-4, 10, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -7, right: 7, top: 7, bottom: -7, near: 1, far: 30 });
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+// Frontlicht aus Richtung der Kamera (wird bei jeder Kamerabewegung nachgeführt): hellt die Vorderseiten auf
+const front = new THREE.DirectionalLight(0xfff4e8, 1.9);
+const FRONT_OFFSET = new THREE.Vector3(1.5, 2, 0);   // im Kamerasystem: etwas rechts und oberhalb der Kamera
+scene.add(front);
+scene.add(front.target);
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -91,25 +132,6 @@ controls.minDistance = 3;
 controls.maxDistance = 22;
 controls.maxPolarAngle = 1.3;
 controls.target.set(0, 0, 0);
-
-scene.add(new THREE.HemisphereLight(0xfff4e0, 0x5a4a38, 0.35));
-// Leicht warme, flacher stehende Sonne: längere Schatten modellieren die Figuren
-const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
-sun.position.set(6, 9, 7);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -7;
-sun.shadow.camera.right = 7;
-sun.shadow.camera.top = 7;
-sun.shadow.camera.bottom = -7;
-sun.shadow.bias = -0.0004;
-sun.shadow.normalBias = 0.02;
-// Weiche Schattenkanten wie von einer Flächenleuchte
-sun.shadow.radius = 4;
-scene.add(sun);
-const fill = new THREE.DirectionalLight(0xc8d8ff, 0.35);
-fill.position.set(-6, 5, -5);
-scene.add(fill);
 
 function squareToPos(sq) {
   const f = FILES.indexOf(sq[0]);
@@ -124,46 +146,78 @@ function posToSquare(x, z) {
   return FILES[f] + (r + 1);
 }
 
-const labels = [];
+// ---------------------------------------------------------------------------
+// Bretter
+// ---------------------------------------------------------------------------
 
-function buildBoard() {
-  const board = new THREE.Group();
-  const light = new THREE.MeshStandardMaterial({ color: 0xe8d4ae, roughness: 0.55 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x8f6340, roughness: 0.55 });
-  // Felder minimal kleiner als 1, die dunkle Grundplatte darunter bildet feine Fugen
+const labels = [];   // Koordinaten am Rand (Spielzeugbrett), werden zum Betrachter gedreht
+const boardMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color().setScalar(BOARD_LIGHT), toneMapped: false });
+
+// Schnitzbrett: fertiges Bild (mit Rand und Koordinaten) auf einer Platte, Schatten auf einer eigenen Fläche darüber
+function buildBoard(texture) {
+  boardMaterial.map = texture;
+  const centre = new THREE.Vector3(-FIELD_OFFSET.x, 0, -FIELD_OFFSET.y);   // Feldmitte im Ursprung
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_PLANE, BOARD_PLANE), boardMaterial);
+  top.rotation.x = -Math.PI / 2;   // Bild oben = Reihe 8 = hinten (-Z)
+  top.position.copy(centre);
+  scene.add(top);
+  // Schatten der Figuren auf dem (unbeleuchteten) Brett: transparente Fläche, die nur Schatten zeigt
+  const shadows = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_PLANE, BOARD_PLANE), new THREE.ShadowMaterial({ opacity: 0.35 }));
+  shadows.rotation.x = -Math.PI / 2;
+  shadows.position.copy(centre).setY(0.002);
+  shadows.receiveShadow = true;
+  scene.add(shadows);
+  const side = new THREE.Mesh(
+    new THREE.BoxGeometry(BOARD_PLANE, BOARD_THICKNESS, BOARD_PLANE),
+    new THREE.MeshStandardMaterial({ color: 0x4a2c1c, roughness: 0.7 }),
+  );
+  side.position.copy(centre).add(new THREE.Vector3(0, -BOARD_THICKNESS / 2 - 0.002, 0));
+  scene.add(side);
+  const table = new THREE.Mesh(
+    new THREE.PlaneGeometry(80, 80),
+    new THREE.MeshStandardMaterial({ color: 0x4a3022, roughness: 0.9, envMapIntensity: 0.3 }),
+  );
+  table.rotation.x = -Math.PI / 2;
+  table.position.y = -BOARD_THICKNESS - 0.01;
+  scene.add(table);
+}
+
+// Spielzeugbrett: Felder als flache Kästen (beleuchtet, mit Schatten), feine Fugen über der dunklen
+// Grundplatte, Rahmen, Koordinaten am Rand
+const toyBoardMats = [];
+function buildToyBoard() {
+  const mat = (color, roughness) => {
+    const m = new THREE.MeshStandardMaterial({ color, roughness });
+    m.userData.baseColor = m.color.clone();
+    toyBoardMats.push(m);
+    return m;
+  };
+  const light = mat(0xe8d4ae, 0.55);
+  const dark = mat(0x8f6340, 0.55);
   const geo = new THREE.BoxGeometry(0.985, 0.12, 0.985);
   for (let f = 0; f < 8; f++) {
     for (let r = 0; r < 8; r++) {
       const m = new THREE.Mesh(geo, (f + r) % 2 === 0 ? dark : light);
       m.position.set(f - 3.5, -0.06, 3.5 - r);
       m.receiveShadow = true;
-      board.add(m);
+      scene.add(m);
     }
   }
-  const base = new THREE.Mesh(
-    new THREE.BoxGeometry(8, 0.1, 8),
-    new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 }),
-  );
+  const base = new THREE.Mesh(new THREE.BoxGeometry(8, 0.1, 8), mat(0x3a2618, 0.8));
   base.position.y = -0.07;
-  board.add(base);
-  const frame = new THREE.Mesh(
-    new THREE.BoxGeometry(9.3, 0.3, 9.3),
-    new THREE.MeshStandardMaterial({ color: 0x4a2f1e, roughness: 0.45 }),
-  );
+  scene.add(base);
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(9.3, 0.3, 9.3), mat(0x4a2f1e, 0.45));
   frame.position.y = -0.17;
   frame.receiveShadow = true;
-  board.add(frame);
-
-  const table = new THREE.Mesh(
-    new THREE.CircleGeometry(30, 64),
-    new THREE.MeshStandardMaterial({ color: 0x7d808a, roughness: 0.9 }),
-  );
+  scene.add(frame);
+  const table = new THREE.Mesh(new THREE.CircleGeometry(30, 64), mat(0x7d808a, 0.9));
   table.rotation.x = -Math.PI / 2;
   table.position.y = -0.33;
   table.receiveShadow = true;
-  board.add(table);
-
-  // Koordinaten am Rand
+  scene.add(table);
+  scene.background = new THREE.Color(0xa9abb2);
   const label = (text) => {
     const c = document.createElement('canvas');
     c.width = c.height = 64;
@@ -175,10 +229,7 @@ function buildBoard() {
     g.fillText(text, 32, 34);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
-    const m = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.32, 0.32),
-      new THREE.MeshBasicMaterial({ map: tex, transparent: true }),
-    );
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
     m.rotation.x = -Math.PI / 2;
     return m;
   };
@@ -188,17 +239,15 @@ function buildBoard() {
       l.position.set(i - 3.5, -0.015, side * 4.32);
       const n = label(String(i + 1));
       n.position.set(side * 4.32, -0.015, 3.5 - i);
-      board.add(l, n);
+      scene.add(l, n);
       labels.push(l, n);
     }
   }
-  return board;
 }
-scene.add(buildBoard());
 
 const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-// Markierungen (Auswahl, mögliche Züge, letzter Zug, Schach)
+// Markierungen (Auswahl, mögliche Züge, letzter Zug, Schach); über der Schattenfläche des Schnitzbretts
 const marks = new THREE.Group();
 scene.add(marks);
 const markGeo = new THREE.PlaneGeometry(1, 1);
@@ -211,7 +260,7 @@ const markMats = {
   move: new THREE.MeshBasicMaterial({ color: 0x1d5e14, transparent: true, opacity: 0.6, depthWrite: false }),
 };
 
-function addMark(sq, kind, y = 0.003) {
+function addMark(sq, kind, y) {
   const geo = kind === 'dot' ? dotGeo : kind === 'ring' ? ringGeo : markGeo;
   const mat = kind === 'dot' || kind === 'ring' ? markMats.move : markMats[kind];
   const m = new THREE.Mesh(geo, mat);
@@ -246,15 +295,31 @@ function updateTweens(dt) {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function angleLerp(a, b, t) {
-  let d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+  const d = ((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
   return a + d * t;
 }
+
+// ---------------------------------------------------------------------------
+// Helligkeit: Regler für Umgebung, Sonne, Front, Figuren und Brett (im Browser gespeichert)
+// ---------------------------------------------------------------------------
+
+// Getrennte Lichtgruppen, damit das Verhältnis (Kontrast zwischen beleuchteten und abgewandten Seiten)
+// einstellbar ist: Umgebung (weich, von überall), Sonne (gerichtet, wirft Schatten), Front (aus
+// Kamerarichtung, macht die Vorderseiten sichtbar, aber flach)
+const GROUPS = {
+  ambient: [[scene, scene.environmentIntensity, 'environmentIntensity']],
+  sun: [[sun, sun.intensity]],
+  front: [[front, front.intensity]],
+};
+const light = { ambient: 1, sun: 1, front: 0, board: 1, white: 1, black: 1 };
+try { Object.assign(light, JSON.parse(localStorage.getItem(LIGHT_KEY))); } catch { /* egal */ }
+const SLIDERS = [['lightAmbient', 'ambient'], ['lightSun', 'sun'], ['lightFront', 'front'], ['lightBoard', 'board'], ['lightWhite', 'white'], ['lightBlack', 'black']];
 
 // ---------------------------------------------------------------------------
 // Figuren
 // ---------------------------------------------------------------------------
 
-const templates = {};
+const templates = {};   // Farbe + Art -> Modell aus loadModel
 const toonMaterials = new Map(); // Original-Material -> Toon-Material
 
 // Drei harte Helligkeitsstufen für den Cel-Shading-Look
@@ -262,13 +327,13 @@ const toonGradient = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1,
 toonGradient.minFilter = toonGradient.magFilter = THREE.NearestFilter;
 toonGradient.needsUpdate = true;
 
-function makeToonMaterial(original) {
-  return new THREE.MeshToonMaterial({
-    map: original.map,
-    color: original.color,
-    gradientMap: toonGradient,
-    side: original.side,
-  });
+function toonMaterial(original) {
+  let m = toonMaterials.get(original);
+  if (!m) {
+    m = new THREE.MeshToonMaterial({ map: original.map, color: original.color, gradientMap: toonGradient, side: original.side });
+    toonMaterials.set(original, m);
+  }
+  return m;
 }
 
 // Umriss als "Inverted Hull": schwarze Rückseiten, im Kameraraum entlang der
@@ -302,35 +367,53 @@ function addOutlines(model) {
   }
 }
 
+/** Ruft fn für jedes Figuren-Mesh (ohne Umriss) auf. */
+function eachMesh(piece, fn) {
+  piece.fig.root.traverse((o) => { if (o.isMesh && !o.userData.outline && o !== piece.hit) fn(o); });
+}
+
 function applyPieceStyle(piece) {
-  piece.model.traverse((o) => {
-    if (!o.isMesh) return;
-    if (o.userData.outline) { o.visible = settings.toon; return; }
+  piece.fig.root.traverse((o) => { if (o.userData.outline) o.visible = settings.toon; });
+  eachMesh(piece, (o) => {
     o.userData.original ??= o.material;
-    o.material = settings.toon ? toonMaterials.get(o.userData.original) : o.userData.original;
-    // Kein Eigenschatten im Toon-Modus: der Toon-Shader beleuchtet auch Rückseiten,
-    // die Shadow Map erzeugt dort sonst harte Flecken
-    o.receiveShadow = !settings.toon;
+    o.material = settings.toon ? toonMaterial(o.userData.original) : o.userData.original;
   });
 }
+
+/** Helligkeitsregler je Seite: multipliziert die Materialfarbe (Textur bleibt, Licht/Schatten-Verhältnis auch). */
+function applyPieceLight(piece) {
+  const f = light[piece.color === 'w' ? 'white' : 'black'];
+  eachMesh(piece, (o) => {
+    const m = o.userData.original ?? o.material;
+    // Ausgangsfarbe am Material merken: Figuren desselben Modells teilen sich ihr Material
+    m.userData.baseColor ||= m.color.clone();
+    m.color.copy(m.userData.baseColor).multiplyScalar(f);
+    toonMaterials.get(m)?.color.copy(m.color);
+  });
+}
+
 let pieces = new Map(); // Feld -> Figur
 const livePieces = new Set(); // alle Figuren in der Szene, auch gerade geschlagene
 
+/** Lädt die zwölf Figuren des gewählten Satzes und merkt sich je Modell Art, Gangart und Höhe. */
 async function loadModels() {
-  const loader = new GLTFLoader();
+  const look = PIECE_SET_LOOK[choice.figuren];
   const jobs = [];
   for (const color of ['w', 'b']) {
     for (const type of Object.keys(PIECE_FILE)) {
-      const url = `/pieces/${PIECE_FILE[type]}_${COLOR_FILE[color]}.glb`;
-      jobs.push(loader.loadAsync(url).then((gltf) => {
-        gltf.scene.traverse((o) => {
-          if (!o.isMesh) return;
-          o.castShadow = true;
-          o.receiveShadow = true;
-          if (!toonMaterials.has(o.material)) toonMaterials.set(o.material, makeToonMaterial(o.material));
-        });
-        const box = new THREE.Box3().setFromObject(gltf.scene);
-        templates[color + type] = { gltf, height: box.max.y - box.min.y };
+      const name = PIECE_FILE[type];
+      jobs.push(loadModel(`assets/sets/${choice.figuren}/${name}_${COLOR_FILE[color]}.glb`).then((m) => {
+        if (look.matt) {
+          m.scene.traverse((o) => {
+            if (!o.isMesh) return;
+            o.material.color.set(0xffffff);
+            o.material.metalness = 0;   // Faktor 0 schaltet auch die Metall-Karte ab
+          });
+        }
+        if (look.walkSpeed) m.walkSpeed = look.walkSpeed;
+        if (look.hop?.[name]) m.hop = look.hop[name];
+        m.pieceHeight = look.height ? look.height[name] : m.height * look.scale;
+        templates[color + type] = m;
       }));
     }
   }
@@ -339,54 +422,25 @@ async function loadModels() {
 
 const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
 
-// Weicher Kontaktschatten unter jeder Figur – ersetzt die Umgebungsverdeckung (AO),
-// die Blender beim Rendern mitberechnet und die der Shadow Map fehlt
-const contactShadowMat = (() => {
-  const c = document.createElement('canvas');
-  c.width = c.height = 128;
-  const g = c.getContext('2d');
-  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grad.addColorStop(0, 'rgba(0,0,0,0.45)');
-  grad.addColorStop(0.35, 'rgba(0,0,0,0.2)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  return new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false });
-})();
-const contactShadowGeo = new THREE.PlaneGeometry(0.72, 0.72).rotateX(-Math.PI / 2);
-
 function createPiece(color, type, square) {
-  const tpl = templates[color + type];
-  const group = new THREE.Group();
-  const model = SkeletonUtils.clone(tpl.gltf.scene);
-  model.scale.setScalar(PIECE_SCALE);
-  group.add(model);
-  addOutlines(model);
-  applyPieceStyle({ model });
+  const model = templates[color + type];
+  // Material des Modells bleibt unverändert (pure); Weiß schaut nach hinten (-Z, zu Schwarz), Schwarz nach vorn
+  const fig = new ModelFigure(model, model.pieceHeight, 0xffffff, BASE_YAW[color], 0, true);
+  addOutlines(fig.root);
 
   // Unsichtbarer Klick-Körper, damit man die ganze Figur anklicken kann
-  const h = tpl.height * PIECE_SCALE;
+  const h = model.pieceHeight;
   const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.4, h, 12), hitMat);
   hit.position.y = h / 2;
-  group.add(hit);
+  fig.root.add(hit);
 
-  const contact = new THREE.Mesh(contactShadowGeo, contactShadowMat);
-  contact.position.y = 0.002;
-  group.add(contact);
+  fig.root.position.copy(squareToPos(square));
+  scene.add(fig.root);
 
-  group.position.copy(squareToPos(square));
-  group.rotation.y = BASE_YAW[color];
-  scene.add(group);
-
-  const mixer = new THREE.AnimationMixer(model);
-  const clip = (name) => tpl.gltf.animations.find((a) => a.name === name);
-  const idle = mixer.clipAction(clip('Idle'));
-  const walk = mixer.clipAction(clip('Walk'));
-  idle.play();
-  idle.time = Math.random() * clip('Idle').duration; // nicht alle im Gleichtakt
-
-  const piece = { color, type, square, group, model, hit, mixer, idle, walk };
+  const piece = { color, type, square, fig, group: fig.root, hit };
   hit.userData.piece = piece;
+  applyPieceStyle(piece);
+  applyPieceLight(piece);
   livePieces.add(piece);
   return piece;
 }
@@ -394,7 +448,10 @@ function createPiece(color, type, square) {
 function removePiece(piece) {
   scene.remove(piece.group);
   livePieces.delete(piece);
-  piece.mixer.stopAllAction();
+  piece.fig.mixer.stopAllAction();
+  // ein unterbrochener Weg (neues Spiel mitten im Zug) gilt als beendet
+  piece.fig.walk?.done();
+  piece.fig.walk = null;
   piece.hit.geometry.dispose();
 }
 
@@ -408,95 +465,39 @@ function syncPieces() {
   }
 }
 
-function startWalking(piece) {
-  piece.walk.reset().setEffectiveWeight(1).play();
-  piece.walk.crossFadeFrom(piece.idle, 0.2, false);
-}
-
-function stopWalking(piece) {
-  piece.idle.reset().setEffectiveWeight(1).play();
-  piece.idle.crossFadeFrom(piece.walk, 0.25, false);
-}
-
-async function turnTo(piece, yaw, duration = TURN_TIME) {
-  const from = piece.group.rotation.y;
-  await tween(duration, (t) => { piece.group.rotation.y = angleLerp(from, yaw, t); });
-}
-
 // Der Springer läuft zwischen den Figuren: zur Feldecke, an der Feldkante entlang, von der Ecke ins Ziel.
 function movePath(type, from, to) {
-  if (type !== 'n') return [from, to];
+  if (type !== 'n') return [to];
   const sx = Math.sign(to.x - from.x) * 0.5;
   const sz = Math.sign(to.z - from.z) * 0.5;
-  return [from, new THREE.Vector3(from.x + sx, 0, from.z + sz), new THREE.Vector3(to.x - sx, 0, to.z - sz), to];
+  return [new THREE.Vector3(from.x + sx, 0, from.z + sz), new THREE.Vector3(to.x - sx, 0, to.z - sz), to];
 }
 
-const pawnHops = (dist) => Math.max(1, Math.round(dist * PAWN_HOPS_PER_SQUARE));
-
-// Dauer des Laufens ohne das Drehen am Anfang (für das Timing beim Schlagen)
-function moveDuration(type, from, to) {
-  if (type === 'p') return pawnHops(from.distanceTo(to)) * PAWN_HOP_TIME;
-  const path = movePath(type, from, to);
-  let t = 0;
-  for (let i = 1; i < path.length; i++) {
-    t += Math.max(path.length === 2 ? 0.5 : 0, path[i - 1].distanceTo(path[i]) / WALK_SPEED);
-    if (i > 1) t += TURN_TIME;
-  }
-  return t;
-}
-
-async function hopPiece(piece, from, to) {
-  await turnTo(piece, Math.atan2(to.x - from.x, to.z - from.z));
-  const n = pawnHops(from.distanceTo(to));
-  startWalking(piece); // Clip beginnt mit dem ersten Sprung
-  piece.walk.setEffectiveTimeScale(piece.walk.getClip().duration / PAWN_HOP_TIME);
-  await tween(n * PAWN_HOP_TIME, (t) => {
-    const h = Math.min(t * n, n - 1e-6);
-    const i = Math.floor(h);
-    const u = Math.min(1, Math.max(0, (h - i - HOP_AIR[0]) / (HOP_AIR[1] - HOP_AIR[0])));
-    piece.group.position.lerpVectors(from, to, (i + ease(u)) / n);
-  }, (t) => t);
-  stopWalking(piece);
-}
-
-async function walkPiece(piece, toSquare) {
+function walkPiece(piece, toSquare) {
   const from = piece.group.position.clone();
   const to = squareToPos(toSquare);
-  if (from.distanceTo(to) < 1e-6) return;
-
-  if (piece.type === 'p') {
-    await hopPiece(piece, from, to);
-  } else {
-    startWalking(piece);
-    const path = movePath(piece.type, from, to);
-    for (let i = 1; i < path.length; i++) {
-      const a = path[i - 1];
-      const b = path[i];
-      await turnTo(piece, Math.atan2(b.x - a.x, b.z - a.z));
-      const duration = Math.max(path.length === 2 ? 0.5 : 0, a.distanceTo(b) / WALK_SPEED);
-      await tween(duration, (t) => { piece.group.position.lerpVectors(a, b, t); });
-    }
-    stopWalking(piece);
-  }
-  await turnTo(piece, BASE_YAW[piece.color], 0.3);
+  if (from.distanceTo(to) < 1e-6) return Promise.resolve();
+  return piece.fig.walkPath(movePath(piece.type, from, to));
 }
 
 async function capturePiece(piece) {
   // Eigene Materialien, damit das Ausblenden nicht alle gleichen Figuren betrifft
   const mats = [];
-  piece.model.traverse((o) => {
-    if (o.isMesh) {
-      const mat = o.material.clone();
-      mat.onBeforeCompile = o.material.onBeforeCompile; // clone() übernimmt das nicht
-      mat.transparent = true;
-      o.material = mat;
-      mats.push(mat);
-    }
+  piece.group.traverse((o) => { if (o.userData.outline) o.visible = false; });
+  eachMesh(piece, (o) => {
+    const mat = o.material.clone();
+    mat.onBeforeCompile = o.material.onBeforeCompile; // clone() übernimmt das nicht
+    mat.userData = {};
+    mat.transparent = true;
+    o.material = mat;
+    o.userData.original = mat;
+    mats.push(mat);
   });
   const tilt = (Math.random() < 0.5 ? -1 : 1) * 1.3;
+  const y0 = piece.group.position.y;
   await tween(0.7, (t) => {
-    piece.model.rotation.z = tilt * t;
-    piece.group.position.y = -0.5 * t * t;
+    piece.group.rotation.z = tilt * t;
+    piece.group.position.y = y0 - 0.5 * t * t;
     for (const m of mats) m.opacity = 1 - t;
   });
   removePiece(piece);
@@ -531,13 +532,14 @@ async function animateMove(move) {
   }
 
   const jobs = [];
-  const walking = walkPiece(mover, move.to);
-  jobs.push(walking);
+  const fromPos = squareToPos(move.from);
+  const toPos = squareToPos(move.to);
+  const travel = mover.fig.travelTime(movePath(move.piece, fromPos, toPos));
+  jobs.push(walkPiece(mover, move.to));
 
   if (victim) {
     // Die geschlagene Figur fällt um, kurz bevor der Angreifer ankommt
-    const travel = moveDuration(move.piece, squareToPos(move.from), squareToPos(move.to));
-    jobs.push(wait((TURN_TIME + travel * 0.6) * 1000).then(() => capturePiece(victim)));
+    jobs.push(wait(travel * 0.6 * 1000).then(() => capturePiece(victim)));
   }
 
   if (move.flags.includes('k') || move.flags.includes('q')) {
@@ -595,17 +597,17 @@ function askEngine(fen, level) {
 function refreshMarks() {
   marks.clear();
   if (lastMove) {
-    addMark(lastMove.from, 'last', 0.002);
-    addMark(lastMove.to, 'last', 0.002);
+    addMark(lastMove.from, 'last', 0.004);
+    addMark(lastMove.to, 'last', 0.004);
   }
   if (game.inCheck()) {
     const king = game.findPiece({ type: 'k', color: game.turn() })[0];
-    if (king) addMark(king, 'check', 0.004);
+    if (king) addMark(king, 'check', 0.006);
   }
   if (selected) {
-    addMark(selected, 'selected', 0.005);
+    addMark(selected, 'selected', 0.007);
     for (const m of game.moves({ square: selected, verbose: true })) {
-      addMark(m.to, m.captured ? 'ring' : 'dot', 0.006);
+      addMark(m.to, m.captured ? 'ring' : 'dot', 0.008);
     }
   }
 }
@@ -717,7 +719,9 @@ async function onSquareClicked(sq) {
 // kleiner) wird per vertikalem Lens-Shift ausgeglichen, damit oben kein Platz verloren geht.
 const HOME_ELEVATION = Math.atan2(10.5, 9.5);
 const HOME_MARGIN = 0.96; // Anteil des Bildes, den das Brett höchstens einnimmt
-const HOME_TOP_HEIGHT = 1.1; // > 0 hält auch Figuren dieser Höhe auf der hinteren Reihe im Bild
+// > 0 hält auch Figuren dieser Höhe auf der hinteren Reihe im Bild (Schnitzfiguren: König 1,9 Feldbreiten)
+const setHeights = PIECE_SET_LOOK[choice.figuren].height;
+const HOME_TOP_HEIGHT = setHeights ? Math.max(...Object.values(setHeights)) + 0.1 : 1.1;
 const fitCam = new THREE.PerspectiveCamera();
 const boardCorners = [[-4, -4, HOME_TOP_HEIGHT], [4, -4, HOME_TOP_HEIGHT], [-4, 4, 0], [4, 4, 0]]
   .map(([x, z, y]) => new THREE.Vector3(x, y, z));
@@ -780,20 +784,27 @@ function cameraHome(animated = true) {
   });
 }
 
-function newGame(fen) {
+/** Neues Spiel aus der Grundstellung, einer FEN oder (nach dem Neuladen) einer gespeicherten Partie als PGN. */
+function newGame(fen, restore) {
   gameToken++;
   pending.clear();
   thinking = false;
   busy = false;
   selected = null;
   lastMove = null;
-  flipped = false;
+  flipped = restore?.flipped ?? false;
   playerColor = colorSel.value;
-  if (fen) game.load(fen); else game.reset();
+  game.reset();
+  if (restore?.pgn) {
+    try { game.loadPgn(restore.pgn); } catch { game.reset(); }
+    lastMove = game.history({ verbose: true }).at(-1) || null;
+  } else if (fen) {
+    game.load(fen);
+  }
   for (const tw of tweens) tw.resolve();
   tweens.clear();
   syncPieces();
-  cameraHome();
+  cameraHome(!restore);
   updateUI();
   if (!game.isGameOver() && game.turn() !== playerColor) computerTurn();
 }
@@ -889,6 +900,42 @@ renderInfoBox.addEventListener('change', () => {
   statsEl.hidden = !settings.renderInfo;
 });
 
+function applyLight() {
+  for (const [g, list] of Object.entries(GROUPS)) {
+    for (const [obj, base, prop = 'intensity'] of list) obj[prop] = base * light[g];
+  }
+  boardMaterial.color.setScalar(BOARD_LIGHT * light.board);
+  for (const m of toyBoardMats) m.color.copy(m.userData.baseColor).multiplyScalar(light.board);
+  for (const p of livePieces) applyPieceLight(p);
+  for (const [id, prop] of SLIDERS) $(id + 'Val').textContent = `${Math.round(light[prop] * 100)} %`;
+  try { localStorage.setItem(LIGHT_KEY, JSON.stringify(light)); } catch { /* egal */ }
+}
+for (const [id, prop] of SLIDERS) {
+  const el = $(id);
+  el.value = light[prop];
+  el.addEventListener('input', () => { light[prop] = Number(el.value); applyLight(); });
+}
+
+// Brett und Figurensatz: Wechsel lädt die Seite neu (nur die gewählten Modelle werden geladen); die laufende
+// Partie wird vorher gespeichert und danach wiederhergestellt
+for (const [id, sets, prop] of [['boardSet', BOARD_SETS, 'brett'], ['pieceSet', PIECE_SETS, 'figuren']]) {
+  const sel = $(id);
+  for (const [k, label] of Object.entries(sets)) sel.add(new Option(label, k));
+  sel.value = choice[prop];
+  sel.addEventListener('change', () => {
+    choice[prop] = sel.value;
+    try {
+      localStorage.setItem(SET_KEY, JSON.stringify(choice));
+      sessionStorage.setItem(GAME_KEY, JSON.stringify({ pgn: game.pgn(), color: playerColor, level: levelSel.value, flipped }));
+    } catch { /* egal */ }
+    // Testparameter (?brett, ?figurensatz) entfernen, sonst überschreiben sie die neue Auswahl
+    const q = new URLSearchParams(location.search);
+    q.delete('brett');
+    q.delete('figurensatz');
+    location.search = q.toString();
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Render-Schleife
 // ---------------------------------------------------------------------------
@@ -925,8 +972,11 @@ renderer.setAnimationLoop(() => {
   timer.update();
   const dt = Math.min(timer.getDelta(), 0.1);
   updateTweens(dt);
-  for (const p of livePieces) p.mixer.update(dt);
+  for (const p of livePieces) p.fig.update(dt);
   controls.update();
+  // Frontlicht wandert mit der Kamera
+  front.position.copy(FRONT_OFFSET).applyQuaternion(camera.quaternion).add(camera.position);
+  front.target.position.copy(controls.target);
   renderer.render(scene, camera);
   updateStats();
 });
@@ -938,7 +988,7 @@ renderer.setAnimationLoop(() => {
 window.chessApp = {
   fen: () => game.fen(),
   history: () => game.history(),
-  isIdle: () => !busy && !thinking && tweens.size === 0,
+  isIdle: () => !busy && !thinking && tweens.size === 0 && [...livePieces].every((p) => !p.fig.walk),
   playerColor: () => playerColor,
   newGame: (fen) => newGame(fen),
   pieceAt: (sq) => {
@@ -946,6 +996,13 @@ window.chessApp = {
     return p ? p.color + p.type : null;
   },
   pieceCount: () => pieces.size,
+  // laufende Animation der Figur, die auf dem Feld steht oder gerade dorthin unterwegs ist
+  anim: (sq) => {
+    const goal = (p) => p.fig.walk && posToSquare(p.fig.walk.segs.at(-1).to.x, p.fig.walk.segs.at(-1).to.z);
+    return (pieces.get(sq) ?? [...livePieces].find((p) => goal(p) === sq))?.fig.anim ?? null;
+  },
+  sets: () => ({ ...choice }),
+  setLight(v) { Object.assign(light, v); for (const [id, p] of SLIDERS) $(id).value = light[p]; applyLight(); },
   toon: () => settings.toon,
   fps: () => fps,
   // Bildschirmkoordinaten (CSS-Pixel) eines Feldmittelpunkts, optional in einer Höhe darüber
@@ -962,8 +1019,25 @@ window.chessApp = {
 // Start
 // ---------------------------------------------------------------------------
 
-await loadModels();
+const [boardTex] = await Promise.all([
+  choice.brett === 'schnitz' ? new THREE.TextureLoader().loadAsync('assets/board/brett_klassisch.png') : null,
+  loadModels(),
+]);
+if (choice.brett === 'tiere') buildToyBoard(); else buildBoard(boardTex);
+// Nebel in Hintergrundfarbe: der Rand des Tisches verschwindet in der Ferne
+scene.fog = new THREE.Fog(scene.background, 30, 60);
+applyLight();
+
+let restore = null;
+try {
+  restore = JSON.parse(sessionStorage.getItem(GAME_KEY));
+  sessionStorage.removeItem(GAME_KEY);
+} catch { /* egal */ }
+if (restore) {
+  colorSel.value = restore.color;
+  levelSel.value = restore.level;
+}
 cameraHome(false);
-newGame();
+newGame(undefined, restore);
 $('loading').classList.add('done');
 document.body.dataset.ready = '1';
