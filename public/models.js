@@ -78,6 +78,8 @@ export class ModelFigure {
     obj.position.copy(model.foot).multiplyScalar(-s);
     obj.position.y -= sink * height;
     this.root.add(obj);
+    this.obj = obj;
+    this.objY = obj.position.y;
     this.homeFacing = facing;
     this.root.rotation.y = facing;
     this.mixer = new THREE.AnimationMixer(obj);
@@ -149,7 +151,7 @@ export class ModelFigure {
         this.play('walk', { speed: this.model.cycle / this.model.hop.time, fade: 0.05 });   // kurz überblenden, sonst fehlt der erste Sprung
       } else {
         this.play('walk');
-        this.actions[this.anim].timeScale = pace;
+        if (this.actions[this.anim]) this.actions[this.anim].timeScale = pace;
       }
     });
   }
@@ -180,6 +182,7 @@ export class ModelFigure {
       k = k >= 1 ? 1 : (i + eased) / w.hops;
     }
     this.root.position.lerpVectors(seg.from, seg.to, k);
+    if (this.model.rigid) this.rigidMotion(w, seg, k);
     if (k < 1) return;
     if (w.i < w.segs.length - 1) {
       w.t -= seg.duration;
@@ -187,7 +190,33 @@ export class ModelFigure {
       return;
     }
     this.walk = null;
+    if (this.model.rigid) this.rigidMotion(null);
     this.play('idle');
     w.done();
+  }
+
+  /**
+   * Starre Figuren (ohne Skelett, z. B. gedrechselte): gleiten mit leichtem Wippen und neigen sich in
+   * Laufrichtung; mit model.jump springen sie in einem Bogen dieser Höhe (Feldbreiten) über die anderen.
+   */
+  rigidMotion(w, seg, k) {
+    const obj = this.obj;
+    if (!w) {
+      obj.position.y = this.objY;
+      obj.rotation.x = 0;
+      return;
+    }
+    const total = w.segs.reduce((t, s) => t + s.duration, 0);
+    const done = (w.segs.slice(0, w.i).reduce((t, s) => t + s.duration, 0) + k * seg.duration) / total;
+    if (this.model.jump) {
+      obj.position.y = this.objY + this.model.jump * 4 * done * (1 - done);
+      obj.rotation.x = 0.25 * (1 - 2 * done);   // Absprung nach vorn geneigt, Landung nach hinten
+      return;
+    }
+    // kleine Schritte: zwei Wipper je Feldbreite, Neigung nach vorn, am Anfang und Ende weich
+    const dist = done * w.segs.reduce((t, s) => t + s.from.distanceTo(s.to), 0);
+    const ramp = Math.min(1, done * 6, (1 - done) * 6);
+    obj.position.y = this.objY + 0.035 * Math.abs(Math.sin(dist * Math.PI * 2));
+    obj.rotation.x = 0.07 * ramp;
   }
 }

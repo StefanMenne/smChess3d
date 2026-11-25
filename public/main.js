@@ -26,7 +26,7 @@ const GAME_KEY = 'schach3d.partie';
 // Brett und Figurensatz sind getrennt wählbar (beide nutzen 1 Feldbreite = 1 Einheit, Weiß vorn bei +Z).
 // Auswahl im Panel, im Browser gespeichert; ?brett=… / ?figurensatz=… überschreiben sie (für Tests)
 const BOARD_SETS = { schnitz: 'Schnitzbrett', tiere: 'Spielzeugbrett' };
-const PIECE_SETS = { schnitz: 'Schnitzfiguren', tiere: 'Tierfiguren' };
+const PIECE_SETS = { schnitz: 'Schnitzfiguren', staunton: 'Staunton', tiere: 'Tierfiguren' };
 const choice = { brett: 'schnitz', figuren: 'schnitz' };   // Standard beim ersten Start: Schnitzbrett und -figuren
 try { Object.assign(choice, JSON.parse(localStorage.getItem(SET_KEY))); } catch { /* egal */ }
 {
@@ -50,14 +50,19 @@ const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, spring
 // Figurensätze: geriggte GLB-Modelle unter assets/sets/<satz>/<art>_<weiss|schwarz>.glb, Clips Idle und
 // WalkInPlace bzw. Walk (auf der Stelle). Was sich je Satz unterscheidet, steht hier:
 //   height:    Figurenhöhe je Art in Feldbreiten; sonst scale: Originalgröße × scale
+//   top:       Höhe der größten Figur (Startansicht hält sie im Bild); sonst aus height bzw. 1,1
 //   matt:      Metallanteile der Textur abschalten (image_to_3d legt oft welche hinein, Holz wirkt sonst bronzen)
 //   walkSpeed: feste Laufgeschwindigkeit in Feldbreiten/s; sonst aus der Schrittlänge des Modells (stride)
+//   rigid:     starre Figuren ohne Animationen: gleiten mit Wippen (models.js rigidMotion)
+//   jump:      je Art Sprung im Bogen dieser Höhe (Feldbreiten) statt Gehen, für starre Figuren
 //   hop:       je Art Hüpfen statt Gehen (perSquare: Sprünge je Feld, time: s je Sprung, air: Abstoßen bis Landung
 //              als Anteile des Clips; vorwärts nur in der Flugphase)
 const PIECE_SET_LOOK = {
   // Schnitzfiguren: Weiß Esche, Schwarz Nussbaum; Bewegungen aus tools/anim_figur.py, Turm aus tools/rig_turm.py
   schnitz: { height: PIECE_HEIGHT, matt: true },
   // Tierfiguren: Originalgröße × 1,05, Materialien unverändert, der Hasen-Bauer hüpft
+  // Gedrechselte Staunton-Figuren (tools/staunton): Weiß Buchsbaum, Schwarz Ebenholz; Höhen aus den Modellen
+  staunton: { scale: 1, top: 1.75, walkSpeed: 1.6, rigid: true, jump: { springer: 0.9 } },
   tiere: { scale: 1.05, walkSpeed: 2.2, hop: { bauer: { perSquare: 2, time: 0.42, air: [0.3, 0.82] } } },
 };
 
@@ -412,6 +417,8 @@ async function loadModels() {
         }
         if (look.walkSpeed) m.walkSpeed = look.walkSpeed;
         if (look.hop?.[name]) m.hop = look.hop[name];
+        if (look.rigid) m.rigid = true;
+        if (look.jump?.[name]) m.jump = look.jump[name];
         m.pieceHeight = look.height ? look.height[name] : m.height * look.scale;
         templates[color + type] = m;
       }));
@@ -466,8 +473,9 @@ function syncPieces() {
 }
 
 // Der Springer läuft zwischen den Figuren: zur Feldecke, an der Feldkante entlang, von der Ecke ins Ziel.
-function movePath(type, from, to) {
-  if (type !== 'n') return [to];
+// Springende Springer (starre Sätze) nehmen den direkten Weg im Bogen.
+function movePath(type, from, to, model) {
+  if (type !== 'n' || model?.jump) return [to];
   const sx = Math.sign(to.x - from.x) * 0.5;
   const sz = Math.sign(to.z - from.z) * 0.5;
   return [new THREE.Vector3(from.x + sx, 0, from.z + sz), new THREE.Vector3(to.x - sx, 0, to.z - sz), to];
@@ -477,7 +485,7 @@ function walkPiece(piece, toSquare) {
   const from = piece.group.position.clone();
   const to = squareToPos(toSquare);
   if (from.distanceTo(to) < 1e-6) return Promise.resolve();
-  return piece.fig.walkPath(movePath(piece.type, from, to));
+  return piece.fig.walkPath(movePath(piece.type, from, to, piece.fig.model));
 }
 
 async function capturePiece(piece) {
@@ -534,7 +542,7 @@ async function animateMove(move) {
   const jobs = [];
   const fromPos = squareToPos(move.from);
   const toPos = squareToPos(move.to);
-  const travel = mover.fig.travelTime(movePath(move.piece, fromPos, toPos));
+  const travel = mover.fig.travelTime(movePath(move.piece, fromPos, toPos, mover.fig.model));
   jobs.push(walkPiece(mover, move.to));
 
   if (victim) {
@@ -720,8 +728,8 @@ async function onSquareClicked(sq) {
 const HOME_ELEVATION = Math.atan2(10.5, 9.5);
 const HOME_MARGIN = 0.96; // Anteil des Bildes, den das Brett höchstens einnimmt
 // > 0 hält auch Figuren dieser Höhe auf der hinteren Reihe im Bild (Schnitzfiguren: König 1,9 Feldbreiten)
-const setHeights = PIECE_SET_LOOK[choice.figuren].height;
-const HOME_TOP_HEIGHT = setHeights ? Math.max(...Object.values(setHeights)) + 0.1 : 1.1;
+const setLook = PIECE_SET_LOOK[choice.figuren];
+const HOME_TOP_HEIGHT = setLook.top ?? (setLook.height ? Math.max(...Object.values(setLook.height)) + 0.1 : 1.1);
 const fitCam = new THREE.PerspectiveCamera();
 const boardCorners = [[-4, -4, HOME_TOP_HEIGHT], [4, -4, HOME_TOP_HEIGHT], [-4, 4, 0], [4, 4, 0]]
   .map(([x, z, y]) => new THREE.Vector3(x, y, z));

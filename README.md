@@ -61,11 +61,13 @@ Claude Code, wie es die Werkzeuge auf dem Rechner aufruft.
 | Satz | Brett | Beschreibung |
 |---|---|---|
 | Schnitzfiguren (Standard) | Schnitzbrett | Mittelalterliche Figuren im Stil geschnitzter Holzfiguren, Weiß Esche, Schwarz Nussbaum |
+| Staunton | Schnitzbrett | Klassische Turnierform, gedrechselt (Rotationskörper aus Profilen), Springerkopf als 3D-Modell; Weiß Buchsbaum, Schwarz Ebenholz; die Figuren gleiten, der Springer springt |
 | Tierfiguren | Spielzeugbrett | Spielzeugtiere: Hase, Pony, Schaf, Schnecke, Giraffe, Elefant; der Hasen-Bauer hüpft |
 
 Weitere Sätze kommen über `public/assets/sets/<satz>/` und einen Eintrag in `PIECE_SET_LOOK`
-(`public/main.js`) hinzu. Die Tierfiguren entstanden mit derselben Pipeline, ihr Ablauf steht in
-`tools/tierschach/LIESMICH.md`.
+(`public/main.js`) hinzu. Der Staunton-Satz entsteht mit `tools/staunton/drehen.py` (Ablauf in
+`tools/staunton/LIESMICH.md`), die Tierfiguren mit derselben Pipeline wie die Schnitzfiguren
+(`tools/tierschach/LIESMICH.md`).
 
 ![Tierfiguren auf dem Spielzeugbrett](docs/tierfiguren.jpg)
 

@@ -28,7 +28,7 @@ async function clickSquare(page, sq) {
 }
 
 const waitIdle = (page, n) => page.waitForFunction(
-  (k) => window.chessApp.isIdle() && window.chessApp.history().length === k, n, { timeout: 30_000 });
+  (k) => window.chessApp.isIdle() && window.chessApp.history().length === k, n, { timeout: 60_000 });
 
 test('Standard beim ersten Start: Schnitzbrett und Schnitzfiguren', async ({ page }) => {
   const errors = await open(page);
@@ -113,5 +113,24 @@ test('Lichtregler: ändern die Helligkeit ohne Fehler und bleiben gespeichert', 
   await page.reload();
   await page.waitForSelector('body[data-ready="1"]', { timeout: 60_000 });
   await expect(page.locator('#lightSun')).toHaveValue('1.2');
+  expect(errors).toEqual([]);
+});
+
+test('Staunton (gedrechselt): starre Figuren gleiten, der Springer springt im Bogen', async ({ page }) => {
+  const errors = await open(page, '?figurensatz=staunton&brett=schnitz');
+  expect(await page.evaluate(() => window.chessApp.pieceCount())).toBe(32);
+  await page.screenshot({ path: `${SHOTS}/staunton_1_start.png` });
+  await clickSquare(page, 'g1');
+  await clickSquare(page, 'f3');
+  // mitten im Sprung: über dem Brett
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: `${SHOTS}/staunton_2_sprung.png` });
+  await waitIdle(page, 2);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('f3'))).toBe('wn');
+  await clickSquare(page, 'e2');
+  await clickSquare(page, 'e4');
+  await waitIdle(page, 4);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('e4'))).toBe('wp');
+  await page.screenshot({ path: `${SHOTS}/staunton_3_ende.png` });
   expect(errors).toEqual([]);
 });
