@@ -41,10 +41,29 @@ os.makedirs(args.out, exist_ok=True)
 # ---------------------------------------------------------------------------
 
 
+DZ = 0.05   # der Fuß ist um so viel höher als in der ersten Fassung; alles darüber rückt nach oben
+
+
 def base(r):
-    """Fuß: flache Scheibe mit Wulst und Hohlkehle, gemeinsam für alle Figuren (r = Außenradius)."""
-    return [("L", r, 0.0), ("L", r, 0.035), ("Q", r + 0.012, 0.07, r - 0.045, 0.085),
-            ("L", r - 0.07, 0.10), ("Q", r - 0.05, 0.125, r - 0.085, 0.14)]
+    """Klassischer Staunton-Fuß (Podest): senkrechte Fußplatte mit gerundeter Kante, Stufe, großer Wulst,
+    Kehle und kleiner Rundstab; endet bei (r - 0.09, 0.19), dort setzt der Körper der Figur an."""
+    return [("L", r, 0.0), ("L", r, 0.05), ("Q", r, 0.068, r - 0.018, 0.068), ("L", r - 0.035, 0.068),
+            ("Q", r - 0.008, 0.075, r - 0.01, 0.105), ("Q", r - 0.012, 0.135, r - 0.05, 0.14),
+            ("L", r - 0.07, 0.15), ("Q", r - 0.052, 0.158, r - 0.058, 0.172),
+            ("Q", r - 0.062, 0.186, r - 0.09, 0.19)]
+
+
+def up(segs, dz=DZ):
+    """Profilteile über dem Fuß um dz anheben."""
+    out = []
+    for s in segs:
+        if s[0] == "L":
+            out.append(("L", s[1], s[2] + dz))
+        elif s[0] == "Q":
+            out.append(("Q", s[1], s[2] + dz, s[3], s[4] + dz))
+        else:
+            out.append(("A", s[1] + dz, s[2], s[3]))
+    return out
 
 
 def collar(r, z, h=0.035):
@@ -55,28 +74,28 @@ def collar(r, z, h=0.035):
 
 PROFILES = {
     # Bauer: Kugelkopf auf schlankem Schaft
-    "bauer": base(0.31) + [("Q", 0.15, 0.17, 0.125, 0.32), ("Q", 0.10, 0.45, 0.10, 0.50)]
-    + collar(0.19, 0.50, 0.03) + [("L", 0.09, 0.565), ("A", 0.715, 0.16, 90)],
+    "bauer": base(0.33) + up([("Q", 0.15, 0.17, 0.125, 0.32), ("Q", 0.10, 0.45, 0.10, 0.50)]
+    + collar(0.19, 0.50, 0.03) + [("L", 0.09, 0.565), ("A", 0.715, 0.16, 90)]),
     # Turm: leicht konischer Rumpf, ausladender Kranz, hohl mit Boden
-    "turm": base(0.35) + [("Q", 0.25, 0.17, 0.235, 0.26), ("L", 0.21, 0.62), ("Q", 0.20, 0.70, 0.25, 0.74),
+    "turm": base(0.36) + up([("Q", 0.25, 0.17, 0.235, 0.26), ("L", 0.21, 0.62), ("Q", 0.20, 0.70, 0.25, 0.74),
                           ("L", 0.27, 0.76), ("L", 0.27, 1.0), ("L", 0.205, 1.0), ("L", 0.205, 0.90),
-                          ("L", 0.0, 0.90)],
+                          ("L", 0.0, 0.90)]),
     # Läufer: Mitra (Ei) auf Kragen, kleine Kugel oben
-    "laeufer": base(0.34) + [("Q", 0.17, 0.18, 0.14, 0.36), ("Q", 0.09, 0.56, 0.10, 0.66)]
+    "laeufer": base(0.36) + up([("Q", 0.17, 0.18, 0.14, 0.36), ("Q", 0.09, 0.56, 0.10, 0.66)]
     + collar(0.20, 0.66, 0.035) + [("L", 0.10, 0.74), ("Q", 0.20, 0.82, 0.175, 0.98),
-                                   ("Q", 0.15, 1.10, 0.04, 1.19), ("L", 0.03, 1.20), ("A", 1.245, 0.05, 90)],
+                                   ("Q", 0.15, 1.10, 0.04, 1.19), ("L", 0.03, 1.20), ("A", 1.245, 0.05, 90)]),
     # Dame: Kelch mit Zackenkrone, Kuppel und Kugel
-    "dame": base(0.36) + [("Q", 0.18, 0.18, 0.15, 0.38), ("Q", 0.10, 0.64, 0.105, 0.76)]
+    "dame": base(0.38) + up([("Q", 0.18, 0.18, 0.15, 0.38), ("Q", 0.10, 0.64, 0.105, 0.76)]
     + collar(0.21, 0.76, 0.035) + [("L", 0.10, 0.84), ("Q", 0.10, 1.05, 0.21, 1.22), ("L", 0.225, 1.24),
                                    ("L", 0.20, 1.27), ("Q", 0.17, 1.30, 0.13, 1.30),
-                                   ("Q", 0.12, 1.40, 0.035, 1.41), ("A", 1.455, 0.05, 90)],
+                                   ("Q", 0.12, 1.40, 0.035, 1.41), ("A", 1.455, 0.05, 90)]),
     # König: wie die Dame, höher, mit Kuppel; das Kreuz kommt als eigener Körper dazu
-    "koenig": base(0.37) + [("Q", 0.19, 0.18, 0.155, 0.40), ("Q", 0.105, 0.70, 0.11, 0.84)]
+    "koenig": base(0.39) + up([("Q", 0.19, 0.18, 0.155, 0.40), ("Q", 0.105, 0.70, 0.11, 0.84)]
     + collar(0.22, 0.84, 0.035) + [("L", 0.105, 0.92), ("Q", 0.10, 1.12, 0.20, 1.27), ("L", 0.215, 1.29),
                                    ("L", 0.19, 1.31), ("Q", 0.20, 1.40, 0.07, 1.43), ("L", 0.045, 1.44),
-                                   ("L", 0.0, 1.44)],
+                                   ("L", 0.0, 1.44)]),
     # Springer: nur der Sockel, oben flach (der Kopf sitzt darauf)
-    "springer": base(0.35) + [("Q", 0.25, 0.16, 0.235, 0.20)] + collar(0.27, 0.20, 0.03) + [("L", 0.0, 0.26)],
+    "springer": base(0.37) + up([("Q", 0.25, 0.16, 0.235, 0.20)] + collar(0.27, 0.20, 0.03) + [("L", 0.0, 0.26)]),
 }
 
 
@@ -224,7 +243,7 @@ def knight_head(path, base_top):
 
 
 KNIGHT_CUT = 0.29      # Höhe (Anteil) über dem Fuß des generierten Modells, wo der Kopf beginnt
-KNIGHT_SCALE = 1.4     # Sockelradius 0,35 statt 0,25
+KNIGHT_SCALE = 1.4     # Kopf passend zum Sockel (Radius 0,37 statt 0,25 im generierten Modell)
 KNIGHT_YAW = 45.0        # Vorlage in Dreiviertelansicht: Schnauze nach glb_post 45° schräg, so genau nach vorn
 KNIGHT_FACES = 40000
 
@@ -326,17 +345,17 @@ def build(kind):
     if kind == "turm":
         # vier Zinnenlücken: zwei Kästen kreuzweise durch den Kranz
         for rot in (0, math.pi / 2):
-            cut(ob, box("luecke", (0.8, 0.10, 0.26), (0, 0, 1.05), (0, 0, rot)))
+            cut(ob, box("luecke", (0.8, 0.10, 0.26), (0, 0, 1.05 + DZ), (0, 0, rot)))
     elif kind == "laeufer":
         # schräger Schlitz in der Mitra, von vorn bis etwas über die Mitte
-        cut(ob, box("schlitz", (0.5, 0.26, 0.03), (0, -0.13, 1.0), (0, math.radians(-40), 0)))
+        cut(ob, box("schlitz", (0.5, 0.26, 0.03), (0, -0.13, 1.0 + DZ), (0, math.radians(-40), 0)))
     elif kind == "dame":
-        pts = [sphere("zacke", 0.03, (0.215 * math.cos(a), 0.215 * math.sin(a), 1.262))
+        pts = [sphere("zacke", 0.03, (0.215 * math.cos(a), 0.215 * math.sin(a), 1.262 + DZ))
                for a in (2 * math.pi * k / 8 + math.pi / 8 for k in range(8))]
         ob = join([ob] + pts)
     elif kind == "koenig":
-        cross = box("kreuz_s", (0.06, 0.06, 0.24), (0, 0, 1.55))
-        bar = box("kreuz_q", (0.17, 0.06, 0.06), (0, 0, 1.585))
+        cross = box("kreuz_s", (0.06, 0.06, 0.24), (0, 0, 1.55 + DZ))
+        bar = box("kreuz_q", (0.17, 0.06, 0.06), (0, 0, 1.585 + DZ))
         m = cross.modifiers.new("u", "BOOLEAN")
         m.operation, m.solver, m.object = "UNION", "EXACT", bar
         bpy.context.view_layer.objects.active = cross
@@ -347,7 +366,7 @@ def build(kind):
         bpy.ops.object.modifier_apply(modifier=bv.name)
         ob = join([ob, cross])
     elif kind == "springer" and args.knight:
-        head = knight_head(args.knight, 0.26)
+        head = knight_head(args.knight, 0.26 + DZ)
         ob = join([ob, head])
     bpy.context.view_layer.objects.active = ob
     ob.select_set(True)
