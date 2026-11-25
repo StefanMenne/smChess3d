@@ -19,6 +19,7 @@ const TYPES = {
   '.glb': 'model/gltf-binary',
   '.json': 'application/json',
   '.png': 'image/png',
+  '.hdr': 'image/vnd.radiance',
   '.jpg': 'image/jpeg',
   '.webp': 'image/webp',
   '.svg': 'image/svg+xml',

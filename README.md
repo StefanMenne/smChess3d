@@ -41,8 +41,9 @@ Claude Code, wie es die Werkzeuge auf dem Rechner aufruft.
      anzufassen. Der Turm, ein Rundturm auf einem Wagen, hat rollende Räder aus `rig_turm.py`.
 4. **Spiel:** Ebenfalls mit Claude Code geschrieben, im Browser mit JavaScript.
    - **Grafik:** Three.js lädt die Figuren als glTF und spielt ihre Animationen ab. Die Laufgeschwindigkeit
-     ergibt sich aus der Schrittlänge, damit die Füße nicht rutschen. Beleuchtet wird mit einer
-     Studio-Umgebung (RoomEnvironment) und einer Sonne für die Schatten.
+     ergibt sich aus der Schrittlänge, damit die Füße nicht rutschen. Beleuchtet wird mit einem selbst in
+     Blender (Cycles) gerenderten Rundum-Bild eines Arbeitszimmers als HDR-Umgebung (`tools/umgebung/`), dazu
+     eine Sonne für die Schatten und Umgebungsverdeckung (GTAO).
    - **Regeln:** chess.js erzeugt die legalen Züge und erkennt Schach, Matt und Remis. Eine Engine hat
      chess.js selbst nicht.
    - **Computergegner:** Von Opus 5.5 programmiert auf Basis von Tomasz Michniewskis

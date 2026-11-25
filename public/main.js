@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
@@ -115,8 +116,12 @@ container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x3a2a20);
-// Standard wie in Modell-Viewern: die Umgebung (RoomEnvironment) beleuchtet die PBR-Modelle von allen Seiten
-// weich, dazu eine Sonne für die Schatten (wirkt nur auf beleuchtete Materialien, das Brettbild bleibt unverändert)
+// Umgebung: ein selbst gerendertes Arbeitszimmer (tools/umgebung/raum.py, Cycles, HDR) beleuchtet alles von allen
+// Seiten und gibt Metall, Lack und Glas etwas zu spiegeln; dazu eine Sonne für die Schatten. Bis das HDR geladen
+// ist (und mit ?umgebung=studio) gilt der synthetische RoomEnvironment-Raum.
+const ENV_HDR = 'assets/umgebung/raum.hdr';
+const ENV_HDR_INTENSITY = 3.5;        // Helligkeit des HDR relativ zum Regler „Umgebung“ (an Holz, Silber und Gold, Weiß und Schwarz abgestimmt)
+const ENV_ROTATION = -Math.PI / 2;    // Bildmitte des Rundum-Bilds (Blender -Y, weiße Seite) nach +Z
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 1.0;
@@ -172,7 +177,11 @@ function posToSquare(x, z) {
 const labels = [];   // Koordinaten am Rand (Spielzeugbrett), werden zum Betrachter gedreht
 // Das Brettbild ist die Farbe eines beleuchteten Materials: es bekommt dasselbe Licht, dieselben Schatten und dieselbe
 // Umgebungsverdeckung wie die Figuren (vorher unbeleuchtet, das passte nie zusammen)
-const boardMaterial = new THREE.MeshStandardMaterial({ color: new THREE.Color().setScalar(BOARD_LIGHT), roughness: 0.45 });
+// Wenig Glanz (specularIntensity): von oben gesehen spiegelt das Brett sonst die helle Decke mit der Pendelleuchte des
+// Umgebungsraums als milchigen Schleier
+const BOARD_SPECULAR = 0.25;
+const boardMaterial = new THREE.MeshPhysicalMaterial({ color: new THREE.Color().setScalar(BOARD_LIGHT), roughness: 0.5,
+  specularIntensity: BOARD_SPECULAR });
 
 // Schnitzbrett: fertiges Bild (mit Rand und Koordinaten) auf einer beleuchteten Platte
 function buildBoard(texture) {
@@ -187,13 +196,13 @@ function buildBoard(texture) {
   scene.add(top);
   const side = new THREE.Mesh(
     new THREE.BoxGeometry(BOARD_PLANE, BOARD_THICKNESS, BOARD_PLANE),
-    new THREE.MeshStandardMaterial({ color: 0x4a2c1c, roughness: 0.7 }),
+    new THREE.MeshPhysicalMaterial({ color: 0x4a2c1c, roughness: 0.7, specularIntensity: BOARD_SPECULAR }),
   );
   side.position.copy(centre).add(new THREE.Vector3(0, -BOARD_THICKNESS / 2 - 0.002, 0));
   scene.add(side);
   const table = new THREE.Mesh(
     new THREE.PlaneGeometry(80, 80),
-    new THREE.MeshStandardMaterial({ color: 0x4a3022, roughness: 0.9, envMapIntensity: 0.3 }),
+    new THREE.MeshPhysicalMaterial({ color: 0x4a3022, roughness: 0.9, envMapIntensity: 0.3, specularIntensity: 0.1 }),
   );
   table.rotation.x = -Math.PI / 2;
   table.position.y = -BOARD_THICKNESS - 0.01;
@@ -205,7 +214,7 @@ function buildBoard(texture) {
 const toyBoardMats = [];
 function buildToyBoard() {
   const mat = (color, roughness) => {
-    const m = new THREE.MeshStandardMaterial({ color, roughness });
+    const m = new THREE.MeshPhysicalMaterial({ color, roughness, specularIntensity: BOARD_SPECULAR });
     m.userData.baseColor = m.color.clone();
     toyBoardMats.push(m);
     return m;
@@ -1101,6 +1110,8 @@ window.chessApp = {
     return (pieces.get(sq) ?? [...livePieces].find((p) => goal(p) === sq))?.fig.anim ?? null;
   },
   sets: () => ({ ...choice }),
+  // Umgebung justieren (Kalibrierung): Helligkeitsbasis und Drehung um die senkrechte Achse
+  setEnv(base, rot) { if (base !== undefined) GROUPS.ambient[0][1] = base; if (rot !== undefined) scene.environmentRotation.y = rot; applyLight(); },
   setLight(v) { Object.assign(light, v); for (const [id, p] of SLIDERS) $(id).value = light[p]; applyLight(); },
   toon: () => settings.toon,
   // Kamera auf eine feste Ansicht stellen (Bilder für die README)
@@ -1125,9 +1136,22 @@ window.chessApp = {
 // Start
 // ---------------------------------------------------------------------------
 
+/** Ersetzt die Studio-Umgebung durch das gerenderte Zimmer. */
+async function loadEnvironment() {
+  if (new URLSearchParams(location.search).get('umgebung') === 'studio') return;
+  const tex = await new HDRLoader().loadAsync(ENV_HDR);
+  const gen = new THREE.PMREMGenerator(renderer);
+  scene.environment = gen.fromEquirectangular(tex).texture;
+  tex.dispose();
+  gen.dispose();
+  scene.environmentRotation.y = ENV_ROTATION;
+  GROUPS.ambient[0][1] = ENV_HDR_INTENSITY;
+}
+
 const [boardTex] = await Promise.all([
   choice.brett === 'schnitz' ? new THREE.TextureLoader().loadAsync('assets/board/brett_klassisch.png') : null,
   loadModels(),
+  loadEnvironment(),
 ]);
 if (choice.brett === 'tiere') buildToyBoard(); else buildBoard(boardTex);
 // Nebel in Hintergrundfarbe: der Rand des Tisches verschwindet in der Ferne
