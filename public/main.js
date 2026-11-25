@@ -44,10 +44,11 @@ if (!PIECE_SETS[choice.figuren]) choice.figuren = 'schnitz';
 
 // Helligkeit des Brettbilds: Faktor auf die Bildfarben (das Brett ist beleuchtet wie die Figuren)
 const BOARD_LIGHT = 1.0;
-// Brett-Textur: Kantenlänge der Fläche und Mitte des 8x8-Feldes relativ zur Bildmitte, in Feldbreiten
-// (x nach rechts, y nach unten im Bild = zur weißen Seite)
-const BOARD_PLANE = 10.3957;
-const FIELD_OFFSET = { x: -0.0535, y: -0.0642 };
+// Brett-Textur (2048 px): Kantenlänge der Fläche in Feldbreiten und Mitte des 8x8-Feldes relativ zur Bildmitte, je
+// Achse (x nach rechts, y nach unten im Bild = zur weißen Seite). Gemessen an den Feldgrenzen im Bild: 200,9 bzw.
+// 200,1 px je Feld, Mitte bei (1016,8 | 1017,3) px; Abweichung der einzelnen Linien vom Raster höchstens ±4 px
+const BOARD_PLANE = { x: 2048 / 200.9, y: 2048 / 200.1 };
+const FIELD_OFFSET = { x: -0.0358, y: -0.0335 };
 const BOARD_THICKNESS = 0.35;
 // Höhe je Figurenart in Feldbreiten (wie bei echten Schachfiguren nach Rang gestaffelt)
 // (Springer: aufrechter Pferdekrieger zwischen Bauer und Läufer; Turm: Rundturm auf Wagen, Deichsel bis zum Feldrand)
@@ -193,13 +194,13 @@ function buildBoard(texture) {
   const centre = new THREE.Vector3(-FIELD_OFFSET.x, 0, -FIELD_OFFSET.y);   // Feldmitte im Ursprung
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  const top = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_PLANE, BOARD_PLANE), boardMaterial);
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_PLANE.x, BOARD_PLANE.y), boardMaterial);
   top.rotation.x = -Math.PI / 2;   // Bild oben = Reihe 8 = hinten (-Z)
   top.position.copy(centre);
   top.receiveShadow = true;
   scene.add(top);
   const side = new THREE.Mesh(
-    new THREE.BoxGeometry(BOARD_PLANE, BOARD_THICKNESS, BOARD_PLANE),
+    new THREE.BoxGeometry(BOARD_PLANE.x, BOARD_THICKNESS, BOARD_PLANE.y),
     new THREE.MeshPhysicalMaterial({ color: 0x4a2c1c, roughness: 0.7, specularIntensity: BOARD_SPECULAR }),
   );
   side.position.copy(centre).add(new THREE.Vector3(0, -BOARD_THICKNESS / 2 - 0.002, 0));
@@ -400,7 +401,7 @@ function addOutlines(model) {
 
 /** Ruft fn für jedes Figuren-Mesh (ohne Umriss) auf. */
 function eachMesh(piece, fn) {
-  piece.fig.root.traverse((o) => { if (o.isMesh && !o.userData.outline && o !== piece.hit) fn(o); });
+  piece.fig.root.traverse((o) => { if (o.isMesh && !o.userData.outline) fn(o); });
 }
 
 // Wählbare Materialien je Farbe (für Sätze mit materials: true). "holz" ist das gebackene Holz des Modells;
@@ -505,8 +506,6 @@ async function loadModels() {
   await Promise.all(jobs);
 }
 
-const HIT_LAYER = 1;
-const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
 
 function createPiece(color, type, square) {
   const model = templates[color + type];
@@ -514,18 +513,10 @@ function createPiece(color, type, square) {
   const fig = new ModelFigure(model, model.pieceHeight, 0xffffff, BASE_YAW[color], 0, true);
   addOutlines(fig.root);
 
-  // Unsichtbarer Klick-Körper, damit man die ganze Figur anklicken kann
-  const h = model.pieceHeight;
-  const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.4, h, 12), hitMat);
-  hit.position.y = h / 2;
-  hit.layers.set(HIT_LAYER);   // nur für den Raycaster: nicht gerendert, auch nicht in die Umgebungsverdeckung
-  fig.root.add(hit);
-
   fig.root.position.copy(squareToPos(square));
   scene.add(fig.root);
 
-  const piece = { color, type, square, fig, group: fig.root, hit };
-  hit.userData.piece = piece;
+  const piece = { color, type, square, fig, group: fig.root };
   applyPieceStyle(piece);
   applyPieceMaterial(piece);
   applyPieceLight(piece);
@@ -540,7 +531,6 @@ function removePiece(piece) {
   // ein unterbrochener Weg (neues Spiel mitten im Zug) gilt als beendet
   piece.fig.walk?.done();
   piece.fig.walk = null;
-  piece.hit.geometry.dispose();
 }
 
 function syncPieces() {
@@ -923,24 +913,16 @@ function undo() {
 // ---------------------------------------------------------------------------
 
 const raycaster = new THREE.Raycaster();
-raycaster.layers.enable(HIT_LAYER);
 const pointer = new THREE.Vector2();
 let downAt = null;
 
+/** Feld unter dem Mauszeiger: nur die Brettebene zählt (die Figuren selbst fangen keine Klicks). */
 function squareAtEvent(e) {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObjects([...pieces.values()].map((p) => p.hit), false);
   const point = raycaster.ray.intersectPlane(ground, new THREE.Vector3());
-  const groundSq = point ? posToSquare(point.x, point.z) : null;
-  const pieceSq = hits.length ? hits[0].object.userData.piece.square : null;
-  // Liegt ein mögliches Zielfeld hinter einer Figur, gewinnt das Zielfeld
-  if (selected && groundSq && groundSq !== pieceSq) {
-    const targets = game.moves({ square: selected, verbose: true }).map((m) => m.to);
-    if (targets.includes(groundSq) && !targets.includes(pieceSq)) return groundSq;
-  }
-  return pieceSq || groundSq;
+  return point ? posToSquare(point.x, point.z) : null;
 }
 
 renderer.domElement.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
@@ -1110,6 +1092,8 @@ window.chessApp = {
   },
   sets: () => ({ ...choice }),
   // Umgebung justieren (Kalibrierung): Helligkeitsbasis und Drehung um die senkrechte Achse
+  // alle 64 Felder schachbrettartig markieren (Prüfen, ob die Markierungen auf den Feldern des Brettbilds sitzen)
+  markAll() { for (let i = 0; i < 64; i++) if ((i + (i >> 3)) % 2 === 0) addMark(FILES[i % 8] + ((i >> 3) + 1), 'last', 0.004); },
   // Umgebungsverdeckung justieren (Vergleich): res, radius, thickness, blend
   setAO(v) {
     Object.assign(ao, v);
