@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Chess } from 'chess.js';
 import { loadModel, ModelFigure } from './models.js';
 
@@ -19,7 +23,7 @@ const MIN_THINK_MS = 450;
 const OUTLINE_WIDTH = 0.022;
 const SETTINGS_KEY = 'schach3d.settings';
 const SET_KEY = 'schach3d.auswahl';
-const LIGHT_KEY = 'schach3d.licht';
+const LIGHT_KEY = 'schach3d.licht2';   // neuer Schlüssel: alte gespeicherte Werte überdecken die neuen Standards nicht
 // Laufende Partie über den Neuladen beim Wechsel von Brett oder Figuren retten
 const GAME_KEY = 'schach3d.partie';
 
@@ -37,8 +41,8 @@ try { Object.assign(choice, JSON.parse(localStorage.getItem(SET_KEY))); } catch 
 if (!BOARD_SETS[choice.brett]) choice.brett = 'schnitz';
 if (!PIECE_SETS[choice.figuren]) choice.figuren = 'schnitz';
 
-// Helligkeit des Brettbilds (unbeleuchtet: Faktor auf die Bildfarben)
-const BOARD_LIGHT = 1.4;
+// Helligkeit des Brettbilds: Faktor auf die Bildfarben (das Brett ist beleuchtet wie die Figuren)
+const BOARD_LIGHT = 1.0;
 // Brett-Textur: Kantenlänge der Fläche und Mitte des 8x8-Feldes relativ zur Bildmitte, in Feldbreiten
 // (x nach rechts, y nach unten im Bild = zur weißen Seite)
 const BOARD_PLANE = 10.3957;
@@ -85,7 +89,7 @@ const statsEl = $('stats');
 // Einstellungen
 // ---------------------------------------------------------------------------
 
-const settings = { toon: false, renderInfo: false };
+const settings = { toon: false, renderInfo: false, ao: true };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch { /* egal */ }
 
 function saveSettings() {
@@ -130,6 +134,15 @@ scene.add(front);
 scene.add(front.target);
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+// Umgebungsverdeckung (GTAO): Kehlen, Ringe, Falten und der Fuß am Brett werden dunkler, wie bei echtem Licht.
+// Die Tonwertabbildung macht danach der OutputPass.
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const gtao = new GTAOPass(scene, camera, 512, 512);
+gtao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 1.0, scale: 1.0, samples: 8 });
+gtao.blendIntensity = 1.0;
+composer.addPass(gtao);
+composer.addPass(new OutputPass());
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enablePan = false;
 controls.enableDamping = true;
@@ -156,9 +169,11 @@ function posToSquare(x, z) {
 // ---------------------------------------------------------------------------
 
 const labels = [];   // Koordinaten am Rand (Spielzeugbrett), werden zum Betrachter gedreht
-const boardMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color().setScalar(BOARD_LIGHT), toneMapped: false });
+// Das Brettbild ist die Farbe eines beleuchteten Materials: es bekommt dasselbe Licht, dieselben Schatten und dieselbe
+// Umgebungsverdeckung wie die Figuren (vorher unbeleuchtet, das passte nie zusammen)
+const boardMaterial = new THREE.MeshStandardMaterial({ color: new THREE.Color().setScalar(BOARD_LIGHT), roughness: 0.45 });
 
-// Schnitzbrett: fertiges Bild (mit Rand und Koordinaten) auf einer Platte, Schatten auf einer eigenen Fläche darüber
+// Schnitzbrett: fertiges Bild (mit Rand und Koordinaten) auf einer beleuchteten Platte
 function buildBoard(texture) {
   boardMaterial.map = texture;
   const centre = new THREE.Vector3(-FIELD_OFFSET.x, 0, -FIELD_OFFSET.y);   // Feldmitte im Ursprung
@@ -167,13 +182,8 @@ function buildBoard(texture) {
   const top = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_PLANE, BOARD_PLANE), boardMaterial);
   top.rotation.x = -Math.PI / 2;   // Bild oben = Reihe 8 = hinten (-Z)
   top.position.copy(centre);
+  top.receiveShadow = true;
   scene.add(top);
-  // Schatten der Figuren auf dem (unbeleuchteten) Brett: transparente Fläche, die nur Schatten zeigt
-  const shadows = new THREE.Mesh(new THREE.PlaneGeometry(BOARD_PLANE, BOARD_PLANE), new THREE.ShadowMaterial({ opacity: 0.35 }));
-  shadows.rotation.x = -Math.PI / 2;
-  shadows.position.copy(centre).setY(0.002);
-  shadows.receiveShadow = true;
-  scene.add(shadows);
   const side = new THREE.Mesh(
     new THREE.BoxGeometry(BOARD_PLANE, BOARD_THICKNESS, BOARD_PLANE),
     new THREE.MeshStandardMaterial({ color: 0x4a2c1c, roughness: 0.7 }),
@@ -316,7 +326,9 @@ const GROUPS = {
   sun: [[sun, sun.intensity]],
   front: [[front, front.intensity]],
 };
-const light = { ambient: 1, sun: 1, front: 0, board: 1, white: 1, black: 1 };
+// Weniger Umgebungslicht, mehr Sonne: plastisch für beide Farben (Weiß brennt nicht aus, Schwarz bekommt Glanzlichter);
+// mit beleuchtetem Brett und Umgebungsverdeckung an Nahaufnahmen von Weiß und Schwarz aller Sätze abgestimmt
+const light = { ambient: 0.45, sun: 1.5, front: 0, board: 1, white: 1, black: 1 };
 try { Object.assign(light, JSON.parse(localStorage.getItem(LIGHT_KEY))); } catch { /* egal */ }
 const SLIDERS = [['lightAmbient', 'ambient'], ['lightSun', 'sun'], ['lightFront', 'front'], ['lightBoard', 'board'], ['lightWhite', 'white'], ['lightBlack', 'black']];
 
@@ -427,6 +439,7 @@ async function loadModels() {
   await Promise.all(jobs);
 }
 
+const HIT_LAYER = 1;
 const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false, colorWrite: false });
 
 function createPiece(color, type, square) {
@@ -439,6 +452,7 @@ function createPiece(color, type, square) {
   const h = model.pieceHeight;
   const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.4, h, 12), hitMat);
   hit.position.y = h / 2;
+  hit.layers.set(HIT_LAYER);   // nur für den Raycaster: nicht gerendert, auch nicht in die Umgebungsverdeckung
   fig.root.add(hit);
 
   fig.root.position.copy(squareToPos(square));
@@ -842,6 +856,7 @@ function undo() {
 // ---------------------------------------------------------------------------
 
 const raycaster = new THREE.Raycaster();
+raycaster.layers.enable(HIT_LAYER);
 const pointer = new THREE.Vector2();
 let downAt = null;
 
@@ -900,6 +915,12 @@ toonBox.addEventListener('change', () => {
   saveSettings();
   for (const p of livePieces) applyPieceStyle(p);
 });
+const aoBox = $('ao');
+aoBox.checked = settings.ao;
+aoBox.addEventListener('change', () => {
+  settings.ao = aoBox.checked;
+  saveSettings();
+});
 renderInfoBox.checked = settings.renderInfo;
 statsEl.hidden = !settings.renderInfo;
 renderInfoBox.addEventListener('change', () => {
@@ -952,6 +973,10 @@ function resize() {
   const w = container.clientWidth;
   const h = container.clientHeight;
   renderer.setSize(w, h);
+  composer.setSize(w, h);
+  // Verdeckung in halber Auflösung: weiche Verläufe, halbe Rechenarbeit
+  const pr = renderer.getPixelRatio();
+  gtao.setSize(Math.round(w * pr / 2), Math.round(h * pr / 2));
   camera.aspect = w / h;
   computeHomeFit();
   applyLensShift(w, h);
@@ -985,7 +1010,7 @@ renderer.setAnimationLoop(() => {
   // Frontlicht wandert mit der Kamera
   front.position.copy(FRONT_OFFSET).applyQuaternion(camera.quaternion).add(camera.position);
   front.target.position.copy(controls.target);
-  renderer.render(scene, camera);
+  if (settings.ao) composer.render(); else renderer.render(scene, camera);
   updateStats();
 });
 
