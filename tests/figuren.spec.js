@@ -134,3 +134,25 @@ test('Staunton (gedrechselt): starre Figuren gleiten, der Springer springt im Bo
   await page.screenshot({ path: `${SHOTS}/staunton_3_ende.png` });
   expect(errors).toEqual([]);
 });
+
+test('Staunton: Material je Farbe wählbar, bleibt gespeichert; bei anderen Sätzen ausgeblendet', async ({ page }) => {
+  const errors = await open(page, '?figurensatz=staunton&brett=schnitz');
+  await page.locator('#moreSettings summary').click();
+  await expect(page.getByTestId('material-white')).toBeVisible();
+  const pairs = [['holz', 'holz'], ['ahorn', 'nussbaum'], ['elfenbein', 'palisander'], ['porzellan', 'lack'], ['silber', 'gold'], ['glas', 'rauchglas']];
+  for (const [w, b] of pairs) {
+    await page.getByTestId('material-white').selectOption(w);
+    await page.getByTestId('material-black').selectOption(b);
+    await page.evaluate(() => window.chessApp.setView([3.2, 3.0, 5.2], [0, 0.5, 0.6]));
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${SHOTS}/material_${w}_${b}.png`, clip: { x: 0, y: 0, width: 1088, height: 900 } });
+  }
+  await page.reload();
+  await page.waitForSelector('body[data-ready="1"]', { timeout: 60_000 });
+  await expect(page.getByTestId('material-white')).toHaveValue('glas');
+  await expect(page.getByTestId('material-black')).toHaveValue('rauchglas');
+  await page.goto('/?figurensatz=schnitz&brett=schnitz');
+  await page.waitForSelector('body[data-ready="1"]', { timeout: 60_000 });
+  await expect(page.locator('#pieceMaterials')).toBeHidden();
+  expect(errors).toEqual([]);
+});

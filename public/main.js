@@ -57,6 +57,7 @@ const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, spring
 //   top:       Höhe der größten Figur (Startansicht hält sie im Bild); sonst aus height bzw. 1,1
 //   matt:      Metallanteile der Textur abschalten (image_to_3d legt oft welche hinein, Holz wirkt sonst bronzen)
 //   walkSpeed: feste Laufgeschwindigkeit in Feldbreiten/s; sonst aus der Schrittlänge des Modells (stride)
+//   materials: Material je Farbe wählbar (PIECE_MATERIALS, Weitere Einstellungen)
 //   rigid:     starre Figuren ohne Animationen: gleiten mit Wippen (models.js rigidMotion)
 //   jump:      je Art Sprung im Bogen dieser Höhe (Feldbreiten) statt Gehen, für starre Figuren
 //   hop:       je Art Hüpfen statt Gehen (perSquare: Sprünge je Feld, time: s je Sprung, air: Abstoßen bis Landung
@@ -66,7 +67,7 @@ const PIECE_SET_LOOK = {
   schnitz: { height: PIECE_HEIGHT, matt: true },
   // Tierfiguren: Originalgröße × 1,05, Materialien unverändert, der Hasen-Bauer hüpft
   // Gedrechselte Staunton-Figuren (tools/staunton): Weiß Buchsbaum, Schwarz Ebenholz; Höhen aus den Modellen
-  staunton: { scale: 1, top: 1.85, walkSpeed: 1.6, rigid: true, jump: { springer: 0.9 } },
+  staunton: { scale: 1, top: 1.85, walkSpeed: 1.6, rigid: true, jump: { springer: 0.9 }, materials: true },
   tiere: { scale: 1.05, walkSpeed: 2.2, hop: { bauer: { perSquare: 2, time: 0.42, air: [0.3, 0.82] } } },
 };
 
@@ -89,7 +90,7 @@ const statsEl = $('stats');
 // Einstellungen
 // ---------------------------------------------------------------------------
 
-const settings = { toon: false, renderInfo: false, ao: true };
+const settings = { toon: false, renderInfo: false, ao: true, material: { w: 'holz', b: 'holz' } };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY))); } catch { /* egal */ }
 
 function saveSettings() {
@@ -389,6 +390,58 @@ function eachMesh(piece, fn) {
   piece.fig.root.traverse((o) => { if (o.isMesh && !o.userData.outline && o !== piece.hit) fn(o); });
 }
 
+// Wählbare Materialien je Farbe (für Sätze mit materials: true). "holz" ist das gebackene Holz des Modells;
+// die anderen Hölzer färben dessen Maserung um (Faktor auf die Texturfarbe), der Rest ersetzt das Material.
+const PIECE_MATERIALS = {
+  w: { holz: 'Buchsbaum', ahorn: 'Ahorn', elfenbein: 'Elfenbein', porzellan: 'Porzellan', silber: 'Silber', glas: 'Kristallglas' },
+  b: { holz: 'Ebenholz', nussbaum: 'Nussbaum', palisander: 'Palisander', lack: 'Klavierlack', gold: 'Gold', rauchglas: 'Rauchglas' },
+};
+const materialCache = new Map();   // Basismaterial + Art -> Material
+
+function makeMaterial(base, kind) {
+  const tinted = (r, g, b, roughness) => {
+    const m = base.clone();
+    m.color.setRGB(r, g, b);
+    if (roughness !== undefined) m.roughness = roughness;
+    return m;
+  };
+  switch (kind) {
+    // Hölzer aus der Maserung des Modells: Ahorn aus Buchsbaum aufgehellt, Nussbaum und Palisander aus Ebenholz
+    case 'ahorn': return tinted(1.75, 1.7, 1.5, 0.4);
+    case 'nussbaum': return tinted(5.5, 5.0, 4.6, 0.4);
+    case 'palisander': return tinted(6.5, 4.0, 3.4, 0.32);
+    case 'elfenbein': return new THREE.MeshPhysicalMaterial({ color: 0xb3a78f, roughness: 0.38, clearcoat: 0.4, clearcoatRoughness: 0.2 });
+    case 'porzellan': return new THREE.MeshPhysicalMaterial({ color: 0xb4b0a8, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.05 });
+    case 'silber': return new THREE.MeshStandardMaterial({ color: 0xc9c9ce, metalness: 1, roughness: 0.22 });
+    case 'gold': return new THREE.MeshStandardMaterial({ color: 0xdcae55, metalness: 1, roughness: 0.25 });
+    case 'lack': return new THREE.MeshPhysicalMaterial({ color: 0x080808, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.03 });
+    case 'glas': return new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0, roughness: 0.04, transmission: 1,
+      thickness: 0.35, ior: 1.5, specularIntensity: 1 });
+    case 'rauchglas': return new THREE.MeshPhysicalMaterial({ color: 0xb8b4b0, metalness: 0, roughness: 0.06, transmission: 1,
+      thickness: 0.4, ior: 1.5, attenuationColor: new THREE.Color(0x6a5e56), attenuationDistance: 0.9 });
+    default: return base;
+  }
+}
+
+/** Setzt das gewählte Material der Farbe (nur Sätze mit materials: true). */
+function applyPieceMaterial(piece) {
+  if (!PIECE_SET_LOOK[choice.figuren].materials) return;
+  const kind = settings.material?.[piece.color] ?? 'holz';
+  eachMesh(piece, (o) => {
+    o.userData.base ??= o.userData.original ?? o.material;
+    const key = `${o.userData.base.uuid}/${kind}`;
+    let m = materialCache.get(key);
+    if (!m) {
+      m = makeMaterial(o.userData.base, kind);
+      if (m !== o.userData.base) m.userData = { baseColor: m.color.clone() };
+      materialCache.set(key, m);
+    }
+    o.userData.original = m;
+  });
+  applyPieceStyle(piece);
+  applyPieceLight(piece);
+}
+
 function applyPieceStyle(piece) {
   piece.fig.root.traverse((o) => { if (o.userData.outline) o.visible = settings.toon; });
   eachMesh(piece, (o) => {
@@ -461,6 +514,7 @@ function createPiece(color, type, square) {
   const piece = { color, type, square, fig, group: fig.root, hit };
   hit.userData.piece = piece;
   applyPieceStyle(piece);
+  applyPieceMaterial(piece);
   applyPieceLight(piece);
   livePieces.add(piece);
   return piece;
@@ -915,6 +969,18 @@ toonBox.addEventListener('change', () => {
   saveSettings();
   for (const p of livePieces) applyPieceStyle(p);
 });
+// Material je Farbe: nur für Sätze, die es erlauben (Staunton)
+$('pieceMaterials').hidden = !PIECE_SET_LOOK[choice.figuren].materials;
+for (const [id, color] of [['materialWhite', 'w'], ['materialBlack', 'b']]) {
+  const sel = $(id);
+  for (const [k, label] of Object.entries(PIECE_MATERIALS[color])) sel.add(new Option(label, k));
+  sel.value = PIECE_MATERIALS[color][settings.material?.[color]] ? settings.material[color] : 'holz';
+  sel.addEventListener('change', () => {
+    settings.material = { ...settings.material, [color]: sel.value };
+    saveSettings();
+    for (const p of livePieces) if (p.color === color) applyPieceMaterial(p);
+  });
+}
 const aoBox = $('ao');
 aoBox.checked = settings.ao;
 aoBox.addEventListener('change', () => {
