@@ -41,7 +41,7 @@ test('Standard beim ersten Start: Schnitzbrett und Schnitzfiguren', async ({ pag
   expect(errors).toEqual([]);
 });
 
-test('Ritter (im Aufbau): Bauern, Läufer, Damen, Könige und Türme beider Farben, die übrigen Figuren sind Platzhalter', async ({ page }) => {
+test('Ritter (im Aufbau): Bauern, Läufer, Damen, Könige und Türme beider Farben, weißer Springer, die übrigen Figuren sind Platzhalter', async ({ page }) => {
   test.setTimeout(360_000);   // viele Züge und Nahaufnahmen
   const errors = await open(page, '?figurensatz=ritter&brett=schnitz');
   await expect(page.getByTestId('piece-set')).toHaveValue('ritter');
@@ -65,6 +65,14 @@ test('Ritter (im Aufbau): Bauern, Läufer, Damen, Könige und Türme beider Farb
   await page.screenshot({ path: `${SHOTS}/ritter_5_laeufer.png` });
   await waitIdle(page, 2);
   expect(await page.evaluate(() => window.chessApp.pieceAt('c4'))).toBe('wb');
+  // weißer Springer g1-f3 (geht um die Ecke)
+  await page.evaluate(() => window.chessApp.newGame());
+  await clickSquare(page, 'g1');
+  await clickSquare(page, 'f3');
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => window.chessApp.anim('f3'))).toBe('WalkInPlace');
+  await waitIdle(page, 2);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('f3'))).toBe('wn');
   // weißer Turm: Bauer a2 weg, Turm rollt a1-a3
   await page.evaluate(() => window.chessApp.newGame('rnbqkbnr/pppppppp/8/8/8/8/1PPPPPPP/RNBQKBNR w KQkq - 0 1'));
   await clickSquare(page, 'a1');
@@ -99,6 +107,10 @@ test('Ritter (im Aufbau): Bauern, Läufer, Damen, Könige und Türme beider Farb
   await page.evaluate(() => window.chessApp.setView([0.8, 1.8, -0.4], [0.5, 1.2, -3.5]));
   await page.waitForTimeout(1000);
   await page.screenshot({ path: `${SHOTS}/ritter_10_koenig_schwarz.png` });
+  // weißer Springer g1 von vorn (aus Richtung Schwarz)
+  await page.evaluate(() => window.chessApp.setView([2.6, 1.6, 1.2], [2.5, 0.8, 3.5]));
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: `${SHOTS}/ritter_12_springer.png` });
   expect(errors).toEqual([]);
 });
 
