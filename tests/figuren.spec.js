@@ -41,7 +41,7 @@ test('Standard beim ersten Start: Schnitzbrett und Schnitzfiguren', async ({ pag
   expect(errors).toEqual([]);
 });
 
-test('Ritter (im Aufbau): Bauern, Läufer und Damen beider Farben, die übrigen Figuren sind Platzhalter', async ({ page }) => {
+test('Ritter (im Aufbau): Bauern, Läufer und Damen beider Farben, weißer König, die übrigen Figuren sind Platzhalter', async ({ page }) => {
   const errors = await open(page, '?figurensatz=ritter&brett=schnitz');
   await expect(page.getByTestId('piece-set')).toHaveValue('ritter');
   expect(await page.evaluate(() => window.chessApp.pieceCount())).toBe(32);
@@ -79,6 +79,10 @@ test('Ritter (im Aufbau): Bauern, Läufer und Damen beider Farben, die übrigen 
   await page.evaluate(() => window.chessApp.setView([0.0, 1.7, -1.2], [-0.5, 0.9, -3.5]));
   await page.waitForTimeout(1000);
   await page.screenshot({ path: `${SHOTS}/ritter_8_dame_schwarz.png` });
+  // weißer König e1 von vorn (aus Richtung Schwarz)
+  await page.evaluate(() => window.chessApp.setView([1.6, 0.9, 1.6], [0.5, 0.6, 3.5]));
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: `${SHOTS}/ritter_9_koenig.png` });
   expect(errors).toEqual([]);
 });
 

@@ -9,7 +9,8 @@
   getrennt. Mit "base_bone" (z. B. "Hips") steht die Stange auf dem Boden: Gewichte von base_bone unten (a) zur
   Hand oben (b), die Stange schwenkt um ihren Fuß. Flächige Requisiten (Schild): {"normal": [nx, ny], "d": d, "z": [z0/H, z1/H], "x_min": x, "bone": ...}
   nimmt alle Vertices im Höhenband mit x_min < x < x_max (beide optional), deren waagerechter Abstand n·(x, y) über d liegt (n wird
-  normiert). Weitere Schlüssel: "prop_cut_max", "to_hips", "robe", "back_layers", "bones_side_R", "center_x" (Körpermitte in x, Modelleinheiten; sonst
+  normiert). Requisiten um den Kopf (wehende Fahne): {"outside": {"center": [x, y], "radius": r}, "z": [z0/H, z1/H],
+  "bone": ...} nimmt im Höhenband alles außerhalb des senkrechten Zylinders. Weitere Schlüssel: "prop_cut_max", "to_hips", "robe", "back_layers", "bones_side_R", "center_x" (Körpermitte in x, Modelleinheiten; sonst
   Mitte der Bounding Box, die ein seitlicher Speer oder Schild verschiebt).
 
 Ergebnis: GLB mit Skelett (Hips, Spine, Chest, Neck, Head, Shoulder/Arm/ForeArm/Hand, UpLeg/Leg/Foot/Toe je .L/.R),
@@ -66,6 +67,14 @@ PROPS = PROFILE.get("props", []) if PROFILE else [
     {"a": [-0.131, 0.0, 0.07], "b": [-0.150, -0.168, 0.88], "radius": 0.022, "bone": "ForeArm.R", "low_x": -0.112}]
 spear, prop_bone, prop_base = [], {}, {}
 for pr in PROPS:
+    if "outside" in pr:   # Requisit um den Kopf herum (Fahne): im Höhenband alles außerhalb eines senkrechten Zylinders
+        cxy, rr = np.array(pr["outside"]["center"], float), pr["outside"]["radius"]
+        for v in mesh.data.vertices:
+            x, y, z = v.co
+            if pr["z"][0] * H < z - mn[2] < pr["z"][1] * H and np.hypot(x - cxy[0], y - cxy[1]) > rr:
+                spear.append(v.index)
+                prop_bone[v.index] = pr["bone"]
+        continue
     if "normal" in pr:   # flächiges Requisit (Schild): Halbraum im Höhenband
         n = np.array(pr["normal"], float) / np.linalg.norm(pr["normal"])
         for v in mesh.data.vertices:
