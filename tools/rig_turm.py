@@ -156,17 +156,29 @@ for v0 in bm.verts:
             if in_wheel(*co[i], WHEEL_X + 0.012 * H, 1.02 * R) and co[i, 2] < axles["F"][1] + 0.9 * R:
                 wheel_of[i] = nearest_wheel(co[i, 0], co[i, 1])
 bm.free()
-# Mittelpunkt je Rad aus seiner Nabenkappe (den äußersten Punkten des Rades): im Modell sitzen die Räder einer Achse
+def circle_fit(y, z, cy0, cz0, r0):
+    """Kreis durch die Felge: Punkte im Ring 0,8..1,12 r0 um die Schätzung, Kreisanpassung (Kasa), dreimal."""
+    cy, cz, r = cy0, cz0, r0
+    for _ in range(3):
+        d = np.hypot(y - cy, z - cz)
+        m = (d > 0.8 * r0) & (d < 1.12 * r0)   # Ring um den bekannten Radius (nicht schrumpfen lassen)
+        if m.sum() < 20:
+            break
+        A = np.c_[2 * y[m], 2 * z[m], np.ones(m.sum())]
+        b = y[m] ** 2 + z[m] ** 2
+        (cy, cz, c), *_ = np.linalg.lstsq(A, b, rcond=None)
+        r = float(np.sqrt(c + cy * cy + cz * cz))
+    return float(cy), float(cz), float(r)
+
+
+# Mittelpunkt je Rad durch Kreisanpassung an die Felge (den äußersten Punkten des Rades): im Modell sitzen die Räder einer Achse
 # nicht genau gleich, mit der gemeinsamen Achsmitte würden sie eiern. Radknochen auf diese Mitte setzen.
 CENTER = {}
 for n in WHEELS:
     idx = [i for i, w in wheel_of.items() if w == n]
     if len(idx) > 50:
         pts = co[idx]
-        ax_ = np.abs(pts[:, 0])
-        hub = pts[ax_ > ax_.max() - 0.012]          # Nabenkappe: der äußerste Teil des Rades
-        cy_, cz_ = float(np.median(hub[:, 1])), float(np.median(hub[:, 2]))
-        r_ = float(np.percentile(np.hypot(pts[:, 1] - cy_, pts[:, 2] - cz_), 97))
+        cy_, cz_, r_ = circle_fit(pts[:, 1], pts[:, 2], WHEELS[n][1], WHEELS[n][2], R)
         CENTER[n] = (float(np.median(pts[:, 0])), cy_, cz_, r_)
 # zweiter Durchgang: Radpunkte neu zuordnen, jetzt mit Mitte und Radius je Rad (sonst nimmt ein Rad Balken des
 # Fahrgestells mit, die im Bereich der gemeinsamen Achsmitte liegen)
@@ -177,16 +189,13 @@ for _ in range(2 if CENTER else 0):
         if n not in CENTER:
             continue
         _, cy_, cz_, r_ = CENTER[n]
-        if abs(x) > WX_EACH.get(n.split(".")[1], WHEEL_X) and math.hypot(y - cy_, z - cz_) < 1.03 * r_:
+        if abs(x) > WX_EACH.get(n.split(".")[1], WHEEL_X) and math.hypot(y - cy_, z - cz_) < 1.02 * max(r_, R):
             wheel_of[i] = n
     for n in list(CENTER):
         idx = [i for i, w in wheel_of.items() if w == n]
         pts = co[idx]
-        ax_ = np.abs(pts[:, 0])
-        hub = pts[ax_ > ax_.max() - 0.012]
-        cy_, cz_ = float(np.median(hub[:, 1])), float(np.median(hub[:, 2]))
-        r_ = min(CENTER[n][3], float(np.percentile(np.hypot(pts[:, 1] - cy_, pts[:, 2] - cz_), 97)))
-        CENTER[n] = (CENTER[n][0], cy_, cz_, r_)
+        cy_, cz_, r_ = circle_fit(pts[:, 1], pts[:, 2], CENTER[n][1], CENTER[n][2], R)
+        CENTER[n] = (CENTER[n][0], cy_, cz_, max(r_, R))   # die Anpassung trifft oft die Felgenmitte, nicht außen
 if CENTER:
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.mode_set(mode="EDIT")

@@ -41,7 +41,7 @@ test('Standard beim ersten Start: Schnitzbrett und Schnitzfiguren', async ({ pag
   expect(errors).toEqual([]);
 });
 
-test('Ritter (im Aufbau): Bauern, Läufer, Damen und Könige beider Farben, weißer Turm, die übrigen Figuren sind Platzhalter', async ({ page }) => {
+test('Ritter (im Aufbau): Bauern, Läufer, Damen, Könige und Türme beider Farben, die übrigen Figuren sind Platzhalter', async ({ page }) => {
   test.setTimeout(360_000);   // viele Züge und Nahaufnahmen
   const errors = await open(page, '?figurensatz=ritter&brett=schnitz');
   await expect(page.getByTestId('piece-set')).toHaveValue('ritter');

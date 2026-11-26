@@ -1,11 +1,13 @@
 """Dreht einen Turm auf Rädern (aus einem Schrägbild) so, dass er gerade steht: Wände parallel zu den Achsen,
 Räder links und rechts (Achsen in x), Mitte auf (0, 0). Vor tools/rig_turm.py.
 
-  blender -b --python tools/ritter/turm_ausrichten.py -- in.glb out.glb [--z 0.3,0.6] [--extra 0]
+  blender -b --python tools/ritter/turm_ausrichten.py -- in.glb out.glb [--z 0.3,0.6] [--extra 0] [--mitte raeder]
 
 Der Drehwinkel kommt aus dem kleinsten umschließenden Rechteck des Grundrisses im Höhenband --z (Turmkörper).
 Danach liegen die Räder entweder an den x- oder den y-Seiten; liegen sie an den y-Seiten, wird um weitere 90° gedreht.
 --extra: zusätzliche Drehung in Grad (z. B. 180, wenn die Schauseite hinten liegt).
+--mitte raeder: in x nach den Rädern (alles unter z 0,2) zentrieren statt nach der ganzen Figur (überstehende Wimpel
+verschieben sonst die Mitte, und die Räder einer Seite rücken scheinbar in den Wagenkasten).
 """
 import math
 import sys
@@ -19,6 +21,7 @@ SRC, DST = argv[0], argv[1]
 o = dict(zip(argv[2::2], argv[3::2]))
 Z0, Z1 = (float(v) for v in o.get("--z", "0.3,0.6").split(","))
 EXTRA = float(o.get("--extra", 0))
+MITTE = o.get("--mitte", "figur")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=SRC)
@@ -56,7 +59,8 @@ over_y = max(low[:, 1].max() - body[:, 1].max(), body[:, 1].min() - low[:, 1].mi
 turn = 90.0 if over_y > over_x else 0.0
 rotate(math.radians(turn + EXTRA))
 co = np.array([v.co[:] for v in m.data.vertices])
-cx, cy = (co[:, 0].min() + co[:, 0].max()) / 2, (co[:, 1].min() + co[:, 1].max()) / 2
+ref = co[co[:, 2] < 0.2] if MITTE == "raeder" else co
+cx, cy = (ref[:, 0].min() + ref[:, 0].max()) / 2, (ref[:, 1].min() + ref[:, 1].max()) / 2
 for v in m.data.vertices:
     v.co.x -= cx
     v.co.y -= cy
