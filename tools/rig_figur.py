@@ -6,7 +6,8 @@
   [head, tail]), dem Saum der Tunika ("leg_top", "belly": Anteile der Höhe, darüber blenden die Oberschenkel aus) und
   optionalen starren Requisiten ("props": [{"a": [x,y,z/H], "b": [x,y,z/H], "radius": r, "bone": "ForeArm.R"}],
   Positionen in Modelleinheiten, z als Anteil der Höhe): ihre Vertices folgen starr der Hand, Flächen zum Rest werden
-  getrennt. Flächige Requisiten (Schild): {"normal": [nx, ny], "d": d, "z": [z0/H, z1/H], "x_min": x, "bone": ...}
+  getrennt. Mit "base_bone" (z. B. "Hips") steht die Stange auf dem Boden: Gewichte von base_bone unten (a) zur
+  Hand oben (b), die Stange schwenkt um ihren Fuß. Flächige Requisiten (Schild): {"normal": [nx, ny], "d": d, "z": [z0/H, z1/H], "x_min": x, "bone": ...}
   nimmt alle Vertices im Höhenband mit x_min < x < x_max (beide optional), deren waagerechter Abstand n·(x, y) über d liegt (n wird
   normiert). Weitere Schlüssel: "prop_cut_max", "to_hips", "robe", "back_layers", "bones_side_R", "center_x" (Körpermitte in x, Modelleinheiten; sonst
   Mitte der Bounding Box, die ein seitlicher Speer oder Schild verschiebt).
@@ -63,7 +64,7 @@ def P(f, sx=1):
 # rigid props (spear, staff, sword): vertices near the axis follow the hand; faces to the rest of the figure are cut
 PROPS = PROFILE.get("props", []) if PROFILE else [
     {"a": [-0.131, 0.0, 0.07], "b": [-0.150, -0.168, 0.88], "radius": 0.022, "bone": "ForeArm.R", "low_x": -0.112}]
-spear, prop_bone = [], {}
+spear, prop_bone, prop_base = [], {}, {}
 for pr in PROPS:
     if "normal" in pr:   # flächiges Requisit (Schild): Halbraum im Höhenband
         n = np.array(pr["normal"], float) / np.linalg.norm(pr["normal"])
@@ -85,6 +86,8 @@ for pr in PROPS:
         if near or low:
             spear.append(v.index)
             prop_bone[v.index] = pr["bone"]
+            if "base_bone" in pr:   # Stange steht auf dem Boden: unten base_bone, oben die Hand (Gewicht nach t)
+                prop_base[v.index] = (pr["base_bone"], float(np.clip(t, 0, 1)))
 ss = set(spear)
 bm = bmesh.new()
 bm.from_mesh(mesh.data)
@@ -287,6 +290,13 @@ if BL:
                 vg[names[gi]].add([v.index], w, "REPLACE")
     print(f"[rt] back_layers: {len(band_v)} vertices in {len(bins)} height bins share averaged weights")
 for vi in spear:
+    if vi in prop_base:
+        base, t = prop_base[vi]
+        if t > 0:
+            vg[prop_bone[vi]].add([vi], t, "REPLACE")
+        if t < 1:
+            vg[base].add([vi], 1 - t, "REPLACE")
+        continue
     vg[prop_bone[vi]].add([vi], 0.5, "REPLACE")
     vg["Chest"].add([vi], 0.5, "REPLACE")
 
