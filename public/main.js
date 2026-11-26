@@ -74,11 +74,12 @@ const PIECE_SET_LOOK = {
   staunton: { scale: 1, top: 1.85, walkSpeed: 1.6, rigid: true, jump: { springer: 0.9 }, materials: true },
   tiere: { scale: 1.05, walkSpeed: 2.2, hop: { bauer: { perSquare: 2, time: 0.42, air: [0.3, 0.82] } } },
   // Ritter (tools/ritter): bisher Bauern (Speer und Schild; Höhe bis zur Speerspitze), Läufer (Kampfbischöfe mit
-  // Hammer und Buch), Damen (Zepter, Reichsapfel) und der weiße König (Fahne, Schwert; Höhe bis zur Fahnenspitze);
+  // Hammer und Buch), Damen (Zepter, Reichsapfel) und Könige (Fahne, Schwert; Höhe bis zur Fahnenspitze, beim
+  // schwarzen König weht die Fahne hoch über der Krone, die Krone sitzt bei beiden auf gleicher Höhe);
   // Weiß blau, Schwarz geschwärzter Stahl und Rot; der Rest sind Schnitzfiguren als Platzhalter
   ritter: { only: { bauer_weiss: 1.45, bauer_schwarz: 1.45, laeufer_weiss: 1.7, laeufer_schwarz: 1.7, dame_weiss: 1.8,
-    dame_schwarz: 1.8, koenig_weiss: 2.05 }, fallback: 'schnitz',
-    top: 2.15 },
+    dame_schwarz: 1.8, koenig_weiss: 2.05, koenig_schwarz: 2.5 }, fallback: 'schnitz',
+    top: 2.6 },
 };
 
 // ---------------------------------------------------------------------------

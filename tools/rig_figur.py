@@ -10,7 +10,7 @@
   Hand oben (b), die Stange schwenkt um ihren Fuß. Flächige Requisiten (Schild): {"normal": [nx, ny], "d": d, "z": [z0/H, z1/H], "x_min": x, "bone": ...}
   nimmt alle Vertices im Höhenband mit x_min < x < x_max (beide optional), deren waagerechter Abstand n·(x, y) über d liegt (n wird
   normiert). Requisiten um den Kopf (wehende Fahne): {"outside": {"center": [x, y], "radius": r}, "z": [z0/H, z1/H],
-  "bone": ...} nimmt im Höhenband alles außerhalb des senkrechten Zylinders. Weitere Schlüssel: "prop_cut_max", "to_hips", "robe", "back_layers", "bones_side_R", "center_x" (Körpermitte in x, Modelleinheiten; sonst
+  "bone": ...} nimmt im Höhenband alles außerhalb des senkrechten Zylinders. Weitere Schlüssel: "prop_cut_max", "to_hips", "robe", "back_layers", "split_robe", "bones_side_R", "center_x" (Körpermitte in x, Modelleinheiten; sonst
   Mitte der Bounding Box, die ein seitlicher Speer oder Schild verschiebt).
 
 Ergebnis: GLB mit Skelett (Hips, Spine, Chest, Neck, Head, Shoulder/Arm/ForeArm/Hand, UpLeg/Leg/Foot/Toe je .L/.R),
@@ -309,6 +309,27 @@ for vi in spear:
     vg[prop_bone[vi]].add([vi], 0.5, "REPLACE")
     vg["Chest"].add([vi], 0.5, "REPLACE")
 
+# "split_robe": {"zmax": Anteil der Höhe}: Flächen unterhalb zmax, die einen Punkt der Unterschenkel/Füße mit einem
+# Punkt verbinden, der nur dem Becken folgt (Umhangsaum, der am Fersen hängt), werden entfernt. Sonst spannen sie
+# beim Gehen eine Haut zwischen Fuß und Umhang.
+SR = (PROFILE or {}).get("split_robe")
+if SR:
+    legg = {vg[n].index for n in vg.keys() if n.split(".")[0] in ("Leg", "Foot", "Toe")}
+    hipg = vg["Hips"].index
+    dom = {}
+    for v in mesh.data.vertices:
+        if v.groups:
+            g = max(v.groups, key=lambda g: g.weight)
+            dom[v.index] = "leg" if g.group in legg else ("hip" if g.group == hipg else "x")
+    bm = bmesh.new()
+    bm.from_mesh(mesh.data)
+    zl = mn[2] + SR["zmax"] * H
+    kill = [f for f in bm.faces if max(v.co.z for v in f.verts) < zl
+            and {dom.get(v.index) for v in f.verts} >= {"leg", "hip"}]
+    bmesh.ops.delete(bm, geom=kill, context="FACES_ONLY")
+    bm.to_mesh(mesh.data)
+    bm.free()
+    print(f"[rt] split_robe: {len(kill)} faces between legs and robe removed")
 bpy.ops.object.select_all(action="SELECT")
 bpy.ops.export_scene.gltf(filepath=DST, export_format="GLB", export_image_format="JPEG", export_image_quality=90,
                           export_yup=True, export_skins=True, export_animations=False)
