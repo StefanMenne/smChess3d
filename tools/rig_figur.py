@@ -226,7 +226,7 @@ if ROBE:
     print(f"[rt] robe: {moved_n} vertices (partly) moved from the legs to the hips")
 # Mehrere Schichten am Rücken (Umhang über dem Rückenpanzer, wenige Millimeter Abstand): "back_layers":
 # {"z": [z0, z1] Anteile der Höhe, "ymin": y-Mindestwert (hinten = +y), "xmax": |x|-Höchstwert} oder eine Liste
-# solcher Boxen (Vereinigung, z. B. in der Rückenmitte tiefer als an den Seiten). Alle Vertices dort
+# solcher Boxen (Vereinigung, z. B. in der Rückenmitte tiefer als an den Seiten), optional "arm_r". Alle Vertices dort
 # bekommen die über ihren Höhenstreifen (1 % der Höhe) gemittelten, über die Höhe geglätteten und interpolierten
 # Gewichte, damit sich die Schichten gemeinsam
 # bewegen und der Rücken beim Atmen nicht durch den Umhang sticht
@@ -236,6 +236,19 @@ if BL:
     band_v = [v for v in mesh.data.vertices if v.index not in ss and any(
         b["z"][0] * H < v.co.z - mn[2] < b["z"][1] * H and v.co.y > b["ymin"] and abs(v.co.x - CX) < b["xmax"]
         for b in boxes)]
+    # Punkte nahe an den Armknochen (echte Arme, "arm_r" in Höhen, Standard 0,06) behalten ihre Gewichte; bei allen
+    # übrigen zählen Armanteile (die Bone Heat einem Umhang neben dem Arm gibt) zur Brust, damit er nicht mitschwingt
+    ARM_R = (BL[0] if isinstance(BL, list) else BL).get("arm_r", 0.06) * H
+    arms = [(np.array(rig.matrix_world @ b.head_local), np.array(rig.matrix_world @ b.tail_local))
+            for b in rig.data.bones if b.name.split(".")[0] in ("Arm", "ForeArm", "Hand")]
+
+    def arm_dist(v):
+        p = np.array(mesh.matrix_world @ v.co)
+        return min(float(np.linalg.norm(p - (h + np.clip(np.dot(p - h, t - h) / np.dot(t - h, t - h), 0, 1) * (t - h))))
+                   for h, t in arms)
+    band_v = [v for v in band_v if arm_dist(v) > ARM_R]
+    ARMG = {vg[b.name].index for b in rig.data.bones if b.name.split(".")[0] in ("Shoulder", "Arm", "ForeArm", "Hand")}
+    CHEST = vg["Chest"].index
     BIN = 0.01 * H
     bins = {}
     for v in band_v:
@@ -246,7 +259,8 @@ if BL:
         acc = {}
         for v in vs:
             for g in v.groups:
-                acc[g.group] = acc.get(g.group, 0.0) + g.weight
+                gi = CHEST if g.group in ARMG else g.group
+                acc[gi] = acc.get(gi, 0.0) + g.weight
         tot = sum(acc.values()) or 1.0
         avg[k] = {gi: w / tot for gi, w in acc.items()}
     # über 5 Streifen glätten (Gewichte ändern sich mit der Höhe sanft, keine Sprünge an Streifengrenzen)
