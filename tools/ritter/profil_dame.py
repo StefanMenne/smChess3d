@@ -1,11 +1,16 @@
-# Profil der Ritter-Dame (dame_ritter_blau_44_saum.glb) aus absoluten Maßen (Modelleinheiten, Höhe 1) in Anteile
-# der Bounding Box umrechnen:  python3 tools/ritter/profil_dame.py  -> profil_dame.json
+# Profile der Ritter-Damen aus absoluten Maßen (Modelleinheiten, Höhe 1) in Anteile der Bounding Box umrechnen:
+#   python3 tools/ritter/profil_dame.py [rot]  -> profil_dame.json bzw. profil_dame_rot.json
 # Langes Gewand bis zum Boden (Füße verdeckt): robe ab z = 0, Umhang hinten mit back_layers; Zepter rechts schräg
 # nach vorn (Stange), Reichsapfel links vor dem Körper (Halbraum).
 import json
 import os
 
-MN, MX = (-0.30280, -0.30993), (0.30131, 0.22498)
+import sys
+
+# weiß: dame_ritter_blau_44_saum.glb, rot (Schwarz): dame_ritter_rot_43_saum.glb (gleiche Pose, Maße auf wenige mm gleich)
+VAR = sys.argv[1] if len(sys.argv) > 1 else "blau"
+MN, MX = ((-0.30368, -0.31828), (0.30186, 0.22613)) if VAR == "rot" else ((-0.30280, -0.30993), (0.30131, 0.22498))
+OUT = "profil_dame_rot.json" if VAR == "rot" else "profil_dame.json"
 cx = (MN[0] + MX[0]) / 2; hx = (MX[0] - MN[0]) / 2; cy = (MN[1] + MX[1]) / 2; hy = (MX[1] - MN[1]) / 2
 CX = -0.005   # Körpermitte
 f = lambda p, sx=1: [round(sx * (p[0] - CX) / hx, 4), round((p[1] - cy) / hy, 4), p[2]]
@@ -33,6 +38,6 @@ prof = {"center_x": CX,
             {"a": ax(0.04), "b": ax(zb), "radius": 0.016, "t_min": (za - 0.04) / (zb - 0.04), "bone": "ForeArm.R",
              "base_bone": "Hips"},                                                                         # Zepter
             {"normal": [0, -1], "d": 0.15, "z": [0.52, 0.63], "x_min": 0.06, "x_max": 0.17, "bone": "ForeArm.L"}]}  # Reichsapfel
-path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profil_dame.json")
+path = os.path.join(os.path.dirname(os.path.abspath(__file__)), OUT)
 json.dump(prof, open(path, "w"), indent=1)
 print("geschrieben", path)
