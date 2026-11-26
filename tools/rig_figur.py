@@ -6,7 +6,10 @@
   [head, tail]), dem Saum der Tunika ("leg_top", "belly": Anteile der Höhe, darüber blenden die Oberschenkel aus) und
   optionalen starren Requisiten ("props": [{"a": [x,y,z/H], "b": [x,y,z/H], "radius": r, "bone": "ForeArm.R"}],
   Positionen in Modelleinheiten, z als Anteil der Höhe): ihre Vertices folgen starr der Hand, Flächen zum Rest werden
-  getrennt. Weitere Schlüssel: "prop_cut_max", "to_hips" (siehe unten).
+  getrennt. Flächige Requisiten (Schild): {"normal": [nx, ny], "d": d, "z": [z0/H, z1/H], "x_min": x, "bone": ...}
+  nimmt alle Vertices im Höhenband mit x > x_min, deren waagerechter Abstand n·(x, y) über d liegt (n wird
+  normiert). Weitere Schlüssel: "prop_cut_max", "to_hips", "center_x" (Körpermitte in x, Modelleinheiten; sonst
+  Mitte der Bounding Box, die ein seitlicher Speer oder Schild verschiebt).
 
 Ergebnis: GLB mit Skelett (Hips, Spine, Chest, Neck, Head, Shoulder/Arm/ForeArm/Hand, UpLeg/Leg/Foot/Toe je .L/.R),
 ohne Animationen. Die Bewegungen erzeugt danach tools/anim_figur.py (Idle, WalkInPlace, Schrittlänge).
@@ -50,8 +53,11 @@ half, ctr, H = (mx - mn) / 2, (mn + mx) / 2, mx[2] - mn[2]
 print(f"[rt] height {H:.3f}")
 
 
+CX = PROFILE.get("center_x", ctr[0]) if PROFILE else ctr[0]
+
+
 def P(f, sx=1):
-    return Vector((ctr[0] + sx * f[0] * half[0], ctr[1] + f[1] * half[1], mn[2] + f[2] * H))
+    return Vector((CX + sx * f[0] * half[0], ctr[1] + f[1] * half[1], mn[2] + f[2] * H))
 
 
 # rigid props (spear, staff, sword): vertices near the axis follow the hand; faces to the rest of the figure are cut
@@ -59,6 +65,14 @@ PROPS = PROFILE.get("props", []) if PROFILE else [
     {"a": [-0.131, 0.0, 0.07], "b": [-0.150, -0.168, 0.88], "radius": 0.022, "bone": "ForeArm.R", "low_x": -0.112}]
 spear, prop_bone = [], {}
 for pr in PROPS:
+    if "normal" in pr:   # flächiges Requisit (Schild): Halbraum im Höhenband
+        n = np.array(pr["normal"], float) / np.linalg.norm(pr["normal"])
+        for v in mesh.data.vertices:
+            x, y, z = v.co
+            if pr["z"][0] * H < z - mn[2] < pr["z"][1] * H and x > pr.get("x_min", -1e9) and n @ (x, y) > pr["d"]:
+                spear.append(v.index)
+                prop_bone[v.index] = pr["bone"]
+        continue
     A = np.array([pr["a"][0], pr["a"][1], pr["a"][2] * H])
     Bp = np.array([pr["b"][0], pr["b"][1], pr["b"][2] * H])
     for v in mesh.data.vertices:

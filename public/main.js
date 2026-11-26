@@ -31,7 +31,7 @@ const GAME_KEY = 'schach3d.partie';
 // Brett und Figurensatz sind getrennt wählbar (beide nutzen 1 Feldbreite = 1 Einheit, Weiß vorn bei +Z).
 // Auswahl im Panel, im Browser gespeichert; ?brett=… / ?figurensatz=… überschreiben sie (für Tests)
 const BOARD_SETS = { schnitz: 'Schnitzbrett', tiere: 'Spielzeugbrett' };
-const PIECE_SETS = { schnitz: 'Schnitzfiguren', staunton: 'Staunton', tiere: 'Tierfiguren' };
+const PIECE_SETS = { schnitz: 'Schnitzfiguren', staunton: 'Staunton', tiere: 'Tierfiguren', ritter: 'Ritter (im Aufbau)' };
 const choice = { brett: 'schnitz', figuren: 'schnitz' };   // Standard beim ersten Start: Schnitzbrett und -figuren
 try { Object.assign(choice, JSON.parse(localStorage.getItem(SET_KEY))); } catch { /* egal */ }
 {
@@ -64,6 +64,8 @@ const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, spring
 //   jump:      je Art Sprung im Bogen dieser Höhe (Feldbreiten) statt Gehen, für starre Figuren
 //   hop:       je Art Hüpfen statt Gehen (perSquare: Sprünge je Feld, time: s je Sprung, air: Abstoßen bis Landung
 //              als Anteile des Clips; vorwärts nur in der Flugphase)
+//   only:      Satz im Aufbau: nur diese Modelle (Datei ohne .glb -> Höhe in Feldbreiten), alle übrigen kommen als
+//              Platzhalter aus dem Satz fallback (mit dessen Einstellungen)
 const PIECE_SET_LOOK = {
   // Schnitzfiguren: Weiß Esche, Schwarz Nussbaum; Bewegungen aus tools/anim_figur.py, Turm aus tools/rig_turm.py
   schnitz: { height: PIECE_HEIGHT, matt: true },
@@ -71,6 +73,9 @@ const PIECE_SET_LOOK = {
   // Gedrechselte Staunton-Figuren (tools/staunton): Weiß Buchsbaum, Schwarz Ebenholz; Höhen aus den Modellen
   staunton: { scale: 1, top: 1.85, walkSpeed: 1.6, rigid: true, jump: { springer: 0.9 }, materials: true },
   tiere: { scale: 1.05, walkSpeed: 2.2, hop: { bauer: { perSquare: 2, time: 0.42, air: [0.3, 0.82] } } },
+  // Ritter (tools/ritter): bisher nur der weiße Bauer (Speer und Schild; Höhe bis zur Speerspitze), der Rest sind
+  // Schnitzfiguren als Platzhalter
+  ritter: { only: { bauer_weiss: 1.45 }, fallback: 'schnitz', top: PIECE_HEIGHT.koenig + 0.1 },
 };
 
 // ---------------------------------------------------------------------------
@@ -481,12 +486,16 @@ const livePieces = new Set(); // alle Figuren in der Szene, auch gerade geschlag
 
 /** Lädt die zwölf Figuren des gewählten Satzes und merkt sich je Modell Art, Gangart und Höhe. */
 async function loadModels() {
-  const look = PIECE_SET_LOOK[choice.figuren];
   const jobs = [];
   for (const color of ['w', 'b']) {
     for (const type of Object.keys(PIECE_FILE)) {
       const name = PIECE_FILE[type];
-      jobs.push(loadModel(`assets/sets/${choice.figuren}/${name}_${COLOR_FILE[color]}.glb`).then((m) => {
+      const file = `${name}_${COLOR_FILE[color]}`;
+      let set = choice.figuren;
+      let look = PIECE_SET_LOOK[set];
+      const ownHeight = look.only?.[file];
+      if (look.only && ownHeight === undefined) look = PIECE_SET_LOOK[set = look.fallback];
+      jobs.push(loadModel(`assets/sets/${set}/${file}.glb`).then((m) => {
         if (look.matt) {
           m.scene.traverse((o) => {
             if (!o.isMesh) return;
@@ -498,7 +507,7 @@ async function loadModels() {
         if (look.hop?.[name]) m.hop = look.hop[name];
         if (look.rigid) m.rigid = true;
         if (look.jump?.[name]) m.jump = look.jump[name];
-        m.pieceHeight = look.height ? look.height[name] : m.height * look.scale;
+        m.pieceHeight = ownHeight ?? (look.height ? look.height[name] : m.height * look.scale);
         templates[color + type] = m;
       }));
     }

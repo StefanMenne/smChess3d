@@ -41,6 +41,26 @@ test('Standard beim ersten Start: Schnitzbrett und Schnitzfiguren', async ({ pag
   expect(errors).toEqual([]);
 });
 
+test('Ritter (im Aufbau): weißer Ritter-Bauer geht, die übrigen Figuren sind Platzhalter', async ({ page }) => {
+  const errors = await open(page, '?figurensatz=ritter&brett=schnitz');
+  await expect(page.getByTestId('piece-set')).toHaveValue('ritter');
+  expect(await page.evaluate(() => window.chessApp.pieceCount())).toBe(32);
+  expect(await page.evaluate(() => window.chessApp.anim('e2'))).toBe('Idle');
+  await page.screenshot({ path: `${SHOTS}/ritter_1_start.png` });
+  await clickSquare(page, 'e2');
+  await clickSquare(page, 'e4');
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => window.chessApp.anim('e4'))).toBe('WalkInPlace');
+  await page.screenshot({ path: `${SHOTS}/ritter_3_laufen.png` });
+  await waitIdle(page, 2);
+  expect(await page.evaluate(() => window.chessApp.anim('e4'))).toBe('Idle');
+  await page.screenshot({ path: `${SHOTS}/ritter_4_ende.png` });
+  await page.evaluate(() => window.chessApp.setView([-0.6, 1.5, -0.2], [-2.8, 0.55, 2.5]));
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: `${SHOTS}/ritter_2_nah.png` });
+  expect(errors).toEqual([]);
+});
+
 test('Schnitzfiguren: gehen mit WalkInPlace, Springer läuft um die Ecke, Schlagen', async ({ page }) => {
   const errors = await open(page, '?figurensatz=schnitz&brett=schnitz');
   await clickSquare(page, 'e2');
