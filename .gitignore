@@ -4,3 +4,4 @@ playwright-report/
 konzepte/
 .env
 __pycache__/
+.browser-profil/
