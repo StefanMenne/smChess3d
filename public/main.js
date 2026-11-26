@@ -73,9 +73,9 @@ const PIECE_SET_LOOK = {
   // Gedrechselte Staunton-Figuren (tools/staunton): Weiß Buchsbaum, Schwarz Ebenholz; Höhen aus den Modellen
   staunton: { scale: 1, top: 1.85, walkSpeed: 1.6, rigid: true, jump: { springer: 0.9 }, materials: true },
   tiere: { scale: 1.05, walkSpeed: 2.2, hop: { bauer: { perSquare: 2, time: 0.42, air: [0.3, 0.82] } } },
-  // Ritter (tools/ritter): bisher nur der weiße Bauer (Speer und Schild; Höhe bis zur Speerspitze), der Rest sind
-  // Schnitzfiguren als Platzhalter
-  ritter: { only: { bauer_weiss: 1.45 }, fallback: 'schnitz', top: PIECE_HEIGHT.koenig + 0.1 },
+  // Ritter (tools/ritter): bisher weißer Bauer (Speer und Schild; Höhe bis zur Speerspitze) und weißer Läufer
+  // (Kampfbischof mit Hammer und Buch), der Rest sind Schnitzfiguren als Platzhalter
+  ritter: { only: { bauer_weiss: 1.45, laeufer_weiss: 1.7 }, fallback: 'schnitz', top: PIECE_HEIGHT.koenig + 0.1 },
 };
 
 // ---------------------------------------------------------------------------

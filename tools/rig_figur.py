@@ -7,8 +7,8 @@
   optionalen starren Requisiten ("props": [{"a": [x,y,z/H], "b": [x,y,z/H], "radius": r, "bone": "ForeArm.R"}],
   Positionen in Modelleinheiten, z als Anteil der Höhe): ihre Vertices folgen starr der Hand, Flächen zum Rest werden
   getrennt. Flächige Requisiten (Schild): {"normal": [nx, ny], "d": d, "z": [z0/H, z1/H], "x_min": x, "bone": ...}
-  nimmt alle Vertices im Höhenband mit x > x_min, deren waagerechter Abstand n·(x, y) über d liegt (n wird
-  normiert). Weitere Schlüssel: "prop_cut_max", "to_hips", "center_x" (Körpermitte in x, Modelleinheiten; sonst
+  nimmt alle Vertices im Höhenband mit x_min < x < x_max (beide optional), deren waagerechter Abstand n·(x, y) über d liegt (n wird
+  normiert). Weitere Schlüssel: "prop_cut_max", "to_hips", "robe", "back_layers", "bones_side_R", "center_x" (Körpermitte in x, Modelleinheiten; sonst
   Mitte der Bounding Box, die ein seitlicher Speer oder Schild verschiebt).
 
 Ergebnis: GLB mit Skelett (Hips, Spine, Chest, Neck, Head, Shoulder/Arm/ForeArm/Hand, UpLeg/Leg/Foot/Toe je .L/.R),
@@ -69,7 +69,8 @@ for pr in PROPS:
         n = np.array(pr["normal"], float) / np.linalg.norm(pr["normal"])
         for v in mesh.data.vertices:
             x, y, z = v.co
-            if pr["z"][0] * H < z - mn[2] < pr["z"][1] * H and x > pr.get("x_min", -1e9) and n @ (x, y) > pr["d"]:
+            if (pr["z"][0] * H < z - mn[2] < pr["z"][1] * H and pr.get("x_min", -1e9) < x < pr.get("x_max", 1e9)
+                    and n @ (x, y) > pr["d"]):
                 spear.append(v.index)
                 prop_bone[v.index] = pr["bone"]
         continue
@@ -122,8 +123,12 @@ if PROFILE:
 SPEC = []
 for n, h, t, par in BONES_C:
     SPEC.append((n, P(h), P(t), par))
+# "bones_side_R": eigene Maße für die rechte Seite (wie bones_side, x nach außen positiv), z. B. bei
+# Figuren, die nicht symmetrisch stehen; fehlende Knochen kommen gespiegelt von links
+BONES_SR = [(n, *PROFILE["bones_side_R"][n], par) if n in PROFILE.get("bones_side_R", {}) else (n, h, t, par)
+            for n, h, t, par in BONES_S] if PROFILE else BONES_S
 for side, sx in (("L", 1), ("R", -1)):
-    for n, h, t, par in BONES_S:
+    for n, h, t, par in (BONES_S if side == "L" else BONES_SR):
         p = par if par in ("Hips", "Chest") else f"{par}.{side}"
         SPEC.append((f"{n}.{side}", P(h, sx), P(t, sx), p))
 NAMES = [s[0] for s in SPEC]
@@ -183,13 +188,90 @@ for side in ("L", "R"):
 for g in list(vg):
     g.remove(spear)
 # Bereiche, die nur dem Becken folgen (z. B. ein Umhang hinter den Beinen, der sonst mit den Beinen abknickt):
-# "to_hips": [{"zmax": Anteil der Höhe, "ymin": y-Mindestwert (hinten = +y)}]
+# "to_hips": [{"zmax": Anteil der Höhe, "ymin": y-Mindestwert (hinten = +y), "zmin": optional, z. B. über den Füßen}]
 for box in (PROFILE or {}).get("to_hips", []):
-    sel = [v.index for v in mesh.data.vertices if v.co.z < mn[2] + box["zmax"] * H and v.co.y > box["ymin"]]
+    sel = [v.index for v in mesh.data.vertices if mn[2] + box.get("zmin", -1) * H < v.co.z < mn[2] + box["zmax"] * H
+           and v.co.y > box["ymin"]]
     for g in list(vg):
         g.remove(sel)
     vg["Hips"].add(sel, 1.0, "REPLACE")
     print(f"[rt] to_hips: {len(sel)} vertices follow the hips only")
+# Langes Gewand ("robe": {"zmin", "zmax": Anteile der Höhe, "r0", "r1": in Höhen}): zwischen zmin (über den Füßen)
+# und zmax folgt alles, was
+# weiter als r1 von den Beinknochen entfernt ist, nur dem Becken (Saum, Umhang); zwischen r0 und r1 wird übergeblendet
+ROBE = (PROFILE or {}).get("robe")
+if ROBE:
+    legs = [(np.array(rig.matrix_world @ b.head_local), np.array(rig.matrix_world @ b.tail_local))
+            for b in rig.data.bones if b.name.split(".")[0] in ("UpLeg", "Leg", "Foot", "Toe")]
+    leg_groups = [vg[b.name].index for b in rig.data.bones if b.name.split(".")[0] in ("UpLeg", "Leg", "Foot", "Toe")]
+    moved_n = 0
+    for v in mesh.data.vertices:
+        if not mn[2] + ROBE.get("zmin", 0) * H < v.co.z < mn[2] + ROBE["zmax"] * H or v.index in ss:
+            continue
+        p = np.array(mesh.matrix_world @ v.co)
+        d = min(float(np.linalg.norm(p - (h + np.clip(np.dot(p - h, t - h) / np.dot(t - h, t - h), 0, 1) * (t - h))))
+                for h, t in legs)
+        k = float(np.clip((d - ROBE["r0"] * H) / ((ROBE["r1"] - ROBE["r0"]) * H), 0, 1))
+        if k <= 0:
+            continue
+        moved = 0.0
+        for g in v.groups:
+            if g.group in leg_groups and g.weight > 0:
+                m = g.weight * k
+                g.weight -= m
+                moved += m
+        if moved > 0:
+            vg["Hips"].add([v.index], moved, "ADD")
+            moved_n += 1
+    print(f"[rt] robe: {moved_n} vertices (partly) moved from the legs to the hips")
+# Mehrere Schichten am Rücken (Umhang über dem Rückenpanzer, wenige Millimeter Abstand): "back_layers":
+# {"z": [z0, z1] Anteile der Höhe, "ymin": y-Mindestwert (hinten = +y), "xmax": |x|-Höchstwert} oder eine Liste
+# solcher Boxen (Vereinigung, z. B. in der Rückenmitte tiefer als an den Seiten). Alle Vertices dort
+# bekommen die über ihren Höhenstreifen (1 % der Höhe) gemittelten, über die Höhe geglätteten und interpolierten
+# Gewichte, damit sich die Schichten gemeinsam
+# bewegen und der Rücken beim Atmen nicht durch den Umhang sticht
+BL = (PROFILE or {}).get("back_layers")
+if BL:
+    boxes = BL if isinstance(BL, list) else [BL]
+    band_v = [v for v in mesh.data.vertices if v.index not in ss and any(
+        b["z"][0] * H < v.co.z - mn[2] < b["z"][1] * H and v.co.y > b["ymin"] and abs(v.co.x - CX) < b["xmax"]
+        for b in boxes)]
+    BIN = 0.01 * H
+    bins = {}
+    for v in band_v:
+        bins.setdefault(int((v.co.z - mn[2]) / BIN), []).append(v)
+    names = {g.index: g.name for g in vg}
+    avg = {}
+    for k, vs in bins.items():
+        acc = {}
+        for v in vs:
+            for g in v.groups:
+                acc[g.group] = acc.get(g.group, 0.0) + g.weight
+        tot = sum(acc.values()) or 1.0
+        avg[k] = {gi: w / tot for gi, w in acc.items()}
+    # über 5 Streifen glätten (Gewichte ändern sich mit der Höhe sanft, keine Sprünge an Streifengrenzen)
+    ks = sorted(avg)
+    smooth = {}
+    for k in ks:
+        acc = {}
+        for j in range(k - 2, k + 3):
+            for gi, w in avg.get(j, {}).items():
+                acc[gi] = acc.get(gi, 0.0) + w
+        tot = sum(acc.values()) or 1.0
+        smooth[k] = {gi: w / tot for gi, w in acc.items()}
+    for v in band_v:   # zwischen den Streifenmitten linear interpolieren
+        zf = (v.co.z - mn[2]) / BIN - 0.5
+        k0 = max(ks[0], min(ks[-1], int(zf // 1)))
+        k1 = min(ks[-1], k0 + 1)
+        t = min(1.0, max(0.0, zf - k0))
+        w0, w1 = smooth.get(k0, smooth[ks[0]]), smooth.get(k1, smooth[ks[-1]])
+        mix = {gi: (1 - t) * w0.get(gi, 0.0) + t * w1.get(gi, 0.0) for gi in set(w0) | set(w1)}
+        for gi in names:
+            vg[names[gi]].remove([v.index])
+        for gi, w in mix.items():
+            if w > 0.005:
+                vg[names[gi]].add([v.index], w, "REPLACE")
+    print(f"[rt] back_layers: {len(band_v)} vertices in {len(bins)} height bins share averaged weights")
 for vi in spear:
     vg[prop_bone[vi]].add([vi], 0.5, "REPLACE")
     vg["Chest"].add([vi], 0.5, "REPLACE")

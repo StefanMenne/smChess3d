@@ -41,7 +41,7 @@ test('Standard beim ersten Start: Schnitzbrett und Schnitzfiguren', async ({ pag
   expect(errors).toEqual([]);
 });
 
-test('Ritter (im Aufbau): weißer Ritter-Bauer geht, die übrigen Figuren sind Platzhalter', async ({ page }) => {
+test('Ritter (im Aufbau): weiße Ritter-Bauern und -Läufer gehen, die übrigen Figuren sind Platzhalter', async ({ page }) => {
   const errors = await open(page, '?figurensatz=ritter&brett=schnitz');
   await expect(page.getByTestId('piece-set')).toHaveValue('ritter');
   expect(await page.evaluate(() => window.chessApp.pieceCount())).toBe(32);
@@ -55,6 +55,15 @@ test('Ritter (im Aufbau): weißer Ritter-Bauer geht, die übrigen Figuren sind P
   await waitIdle(page, 2);
   expect(await page.evaluate(() => window.chessApp.anim('e4'))).toBe('Idle');
   await page.screenshot({ path: `${SHOTS}/ritter_4_ende.png` });
+  // Läufer f1 nach c4 (Diagonale ist nach e4 frei)
+  await page.evaluate(() => window.chessApp.newGame('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2'));
+  await clickSquare(page, 'f1');
+  await clickSquare(page, 'c4');
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => window.chessApp.anim('c4'))).toBe('WalkInPlace');
+  await page.screenshot({ path: `${SHOTS}/ritter_5_laeufer.png` });
+  await waitIdle(page, 2);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('c4'))).toBe('wb');
   await page.evaluate(() => window.chessApp.setView([-0.6, 1.5, -0.2], [-2.8, 0.55, 2.5]));
   await page.waitForTimeout(1000);
   await page.screenshot({ path: `${SHOTS}/ritter_2_nah.png` });
