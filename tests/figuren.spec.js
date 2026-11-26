@@ -41,7 +41,7 @@ test('Standard beim ersten Start: Schnitzbrett und Schnitzfiguren', async ({ pag
   expect(errors).toEqual([]);
 });
 
-test('Ritter (im Aufbau): weiße Ritter-Bauern, Läufer beider Farben, die übrigen Figuren sind Platzhalter', async ({ page }) => {
+test('Ritter (im Aufbau): Bauern und Läufer beider Farben, die übrigen Figuren sind Platzhalter', async ({ page }) => {
   const errors = await open(page, '?figurensatz=ritter&brett=schnitz');
   await expect(page.getByTestId('piece-set')).toHaveValue('ritter');
   expect(await page.evaluate(() => window.chessApp.pieceCount())).toBe(32);
