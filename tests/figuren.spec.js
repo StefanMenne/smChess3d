@@ -41,7 +41,8 @@ test('Standard beim ersten Start: Schnitzbrett und Schnitzfiguren', async ({ pag
   expect(errors).toEqual([]);
 });
 
-test('Ritter (im Aufbau): Bauern, Läufer, Damen und Könige beider Farben, die übrigen Figuren sind Platzhalter', async ({ page }) => {
+test('Ritter (im Aufbau): Bauern, Läufer, Damen und Könige beider Farben, weißer Turm, die übrigen Figuren sind Platzhalter', async ({ page }) => {
+  test.setTimeout(360_000);   // viele Züge und Nahaufnahmen
   const errors = await open(page, '?figurensatz=ritter&brett=schnitz');
   await expect(page.getByTestId('piece-set')).toHaveValue('ritter');
   expect(await page.evaluate(() => window.chessApp.pieceCount())).toBe(32);
@@ -64,6 +65,17 @@ test('Ritter (im Aufbau): Bauern, Läufer, Damen und Könige beider Farben, die 
   await page.screenshot({ path: `${SHOTS}/ritter_5_laeufer.png` });
   await waitIdle(page, 2);
   expect(await page.evaluate(() => window.chessApp.pieceAt('c4'))).toBe('wb');
+  // weißer Turm: Bauer a2 weg, Turm rollt a1-a3
+  await page.evaluate(() => window.chessApp.newGame('rnbqkbnr/pppppppp/8/8/8/8/1PPPPPPP/RNBQKBNR w KQkq - 0 1'));
+  await clickSquare(page, 'a1');
+  await clickSquare(page, 'a3');
+  await page.waitForTimeout(400);
+  expect(await page.evaluate(() => window.chessApp.anim('a3'))).toMatch(/Walk/);
+  await page.evaluate(() => window.chessApp.setView([-1.2, 1.4, 1.6], [-3.5, 0.5, 2.5]));
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SHOTS}/ritter_11_turm.png` });
+  await waitIdle(page, 2);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('a3'))).toBe('wr');
   await page.evaluate(() => window.chessApp.setView([-0.6, 1.5, -0.2], [-2.8, 0.55, 2.5]));
   await page.waitForTimeout(1000);
   await page.screenshot({ path: `${SHOTS}/ritter_2_nah.png` });

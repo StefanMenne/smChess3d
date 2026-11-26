@@ -1,6 +1,10 @@
 """Rig the rook (a round tower on a four-wheeled cart) and write its animations by hand.
 
-  rig_turm.py in.glb out.glb
+  rig_turm.py in.glb out.glb [--wheel-x 0.235] [--wheel-x-each FL:0.18,FR:0.155,BL:0.17,BR:0.165]
+
+--wheel-x: |x| ab dem die Räder beginnen (innen davon liegt der Wagenkasten); --wheel-x-each: eigene Grenze je Rad,
+wenn ein Rad im Modell weiter innen sitzt als die anderen (F = vorn, B = hinten, L = +x, R = -x); --wheel-x bleibt
+dann die Grenze zum Finden von Achsen und Radgröße (nur sicher äußere Radteile).
 
 Input: glb_post output (bottom at z=0, front = -Y, the drawbar points to the front). The wheels are found as the
 vertices outside the chassis (|x| > WHEEL_X) below the wheel top; they are split into four by side and axle.
@@ -20,7 +24,11 @@ from mathutils import Vector
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
 SRC, DST = argv[0], argv[1]
 FPS = 30
-WHEEL_X = 0.235   # |x| beyond the chassis: wheels and hub caps
+_opt = dict(zip(argv[2::2], argv[3::2]))
+WHEEL_X = float(_opt.get("--wheel-x", 0.235))   # |x| beyond the chassis: wheels and hub caps
+WX_EACH = {k: float(v) for k, v in (kv.split(":") for kv in _opt["--wheel-x-each"].split(","))} \
+    if "--wheel-x-each" in _opt else {}
+# Achsen und Radgröße werden mit WHEEL_X gefunden (nur sicher äußere Radteile), die Zuordnung je Rad mit WX_EACH
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=SRC)
@@ -109,9 +117,10 @@ def nearest_wheel(x, y):
 
 
 def in_wheel(x, y, z, x_min, r_max):
-    if abs(x) <= x_min:
+    n = nearest_wheel(x, y)
+    if abs(x) <= x_min + WX_EACH.get(n.split(".")[1], WHEEL_X) - WHEEL_X:
         return False
-    _, wy_, wz_ = WHEELS[nearest_wheel(x, y)]
+    _, wy_, wz_ = WHEELS[n]
     return math.hypot(y - wy_, z - wz_) < r_max
 
 
@@ -147,6 +156,58 @@ for v0 in bm.verts:
             if in_wheel(*co[i], WHEEL_X + 0.012 * H, 1.02 * R) and co[i, 2] < axles["F"][1] + 0.9 * R:
                 wheel_of[i] = nearest_wheel(co[i, 0], co[i, 1])
 bm.free()
+# Mittelpunkt je Rad aus seiner Nabenkappe (den äußersten Punkten des Rades): im Modell sitzen die Räder einer Achse
+# nicht genau gleich, mit der gemeinsamen Achsmitte würden sie eiern. Radknochen auf diese Mitte setzen.
+CENTER = {}
+for n in WHEELS:
+    idx = [i for i, w in wheel_of.items() if w == n]
+    if len(idx) > 50:
+        pts = co[idx]
+        ax_ = np.abs(pts[:, 0])
+        hub = pts[ax_ > ax_.max() - 0.012]          # Nabenkappe: der äußerste Teil des Rades
+        cy_, cz_ = float(np.median(hub[:, 1])), float(np.median(hub[:, 2]))
+        r_ = float(np.percentile(np.hypot(pts[:, 1] - cy_, pts[:, 2] - cz_), 97))
+        CENTER[n] = (float(np.median(pts[:, 0])), cy_, cz_, r_)
+# zweiter Durchgang: Radpunkte neu zuordnen, jetzt mit Mitte und Radius je Rad (sonst nimmt ein Rad Balken des
+# Fahrgestells mit, die im Bereich der gemeinsamen Achsmitte liegen)
+for _ in range(2 if CENTER else 0):
+    wheel_of = {}
+    for i, (x, y, z) in enumerate(co):
+        n = nearest_wheel(x, y)
+        if n not in CENTER:
+            continue
+        _, cy_, cz_, r_ = CENTER[n]
+        if abs(x) > WX_EACH.get(n.split(".")[1], WHEEL_X) and math.hypot(y - cy_, z - cz_) < 1.03 * r_:
+            wheel_of[i] = n
+    for n in list(CENTER):
+        idx = [i for i, w in wheel_of.items() if w == n]
+        pts = co[idx]
+        ax_ = np.abs(pts[:, 0])
+        hub = pts[ax_ > ax_.max() - 0.012]
+        cy_, cz_ = float(np.median(hub[:, 1])), float(np.median(hub[:, 2]))
+        r_ = min(CENTER[n][3], float(np.percentile(np.hypot(pts[:, 1] - cy_, pts[:, 2] - cz_), 97)))
+        CENTER[n] = (CENTER[n][0], cy_, cz_, r_)
+if CENTER:
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode="EDIT")
+    for n, (cx_, cy_, cz_, r_) in CENTER.items():
+        b = arm.edit_bones[n]
+        sx = WHEELS[n][0]
+        b.head = Vector((sx * x_side, cy_, cz_))
+        b.tail = Vector((sx * x_side + 0.05, cy_, cz_))
+        WHEELS[n] = (sx, cy_, cz_)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    R = float(np.mean([c[3] for c in CENTER.values()]))
+    print("[turm] Radmitten", {n: (round(c[1], 3), round(c[2], 3), round(c[3], 3)) for n, c in CENTER.items()})
+# Flächen, die ein Rad mit dem Wagen (oder einem anderen Rad) verbinden, werden getrennt: sonst ziehen sie sich
+# beim Drehen zu Spitzen (die Räder stecken im Modell oft im Fahrgestell)
+bm = bmesh.new()
+bm.from_mesh(mesh.data)
+mixed = [f for f in bm.faces if len({wheel_of.get(v.index, "") for v in f.verts}) > 1]
+bmesh.ops.delete(bm, geom=mixed, context="FACES_ONLY")
+bm.to_mesh(mesh.data)
+bm.free()
+print(f"[turm] {len(mixed)} Flächen zwischen Rädern und Wagen getrennt")
 for n in WHEELS:
     vg[n].add([i for i, w in wheel_of.items() if w == n], 1.0, "REPLACE")
 vg["Body"].add([v.index for v in mesh.data.vertices if v.index not in wheel_of], 1.0, "REPLACE")
