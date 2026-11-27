@@ -64,6 +64,8 @@ const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, spring
 //   jump:      je Art Sprung im Bogen dieser Höhe (Feldbreiten) statt Gehen, für starre Figuren
 //   hop:       je Art Hüpfen statt Gehen (perSquare: Sprünge je Feld, time: s je Sprung, air: Abstoßen bis Landung
 //              als Anteile des Clips; vorwärts nur in der Flugphase)
+//   fixedView: Kamera fest in der Startansicht (nicht drehbar), nötig für die Kampfszenen
+//   battles:   Kampfvideos beim Schlagen (siehe Abschnitt Kampfszenen)
 //   only:      Satz im Aufbau: nur diese Modelle (Datei ohne .glb -> Höhe in Feldbreiten), alle übrigen kommen als
 //              Platzhalter aus dem Satz fallback (mit dessen Einstellungen)
 const PIECE_SET_LOOK = {
@@ -82,7 +84,9 @@ const PIECE_SET_LOOK = {
   ritter: { only: { bauer_weiss: 1.45, bauer_schwarz: 1.45, laeufer_weiss: 1.7, laeufer_schwarz: 1.7, dame_weiss: 1.8,
     dame_schwarz: 1.8, koenig_weiss: 2.05, koenig_schwarz: 2.5, turm_weiss: 1.75, turm_schwarz: 1.75,
     springer_weiss: 1.6, springer_schwarz: 1.6 }, fallback: 'schnitz',
-    top: 2.6 },
+    top: 2.6, fixedView: true,
+    // Kampfszenen wie in Battle Chess: Angreifer (Farbe+Art) - Opfer (Farbe+Art) -> Ordner mit Einzelbildern
+    battles: { 'wp-bp': 'assets/sets/ritter/kampf/bauer_bauer' } },
 };
 
 // ---------------------------------------------------------------------------
@@ -626,6 +630,19 @@ async function animateMove(move) {
     pieces.delete(move.to);
   }
 
+  const battle = victim && !move.flags.includes('e') && battleFor(mover, victim);
+  if (battle) {
+    await playBattle(battle, mover, victim, move, stale);
+    if (stale()) return;
+    mover.square = move.to;
+    pieces.set(move.to, mover);
+    if (move.promotion) {
+      const promoted = await promotePiece(mover, move.promotion);
+      if (stale()) removePiece(promoted); else pieces.set(move.to, promoted);
+    }
+    return;
+  }
+
   const jobs = [];
   const fromPos = squareToPos(move.from);
   const toPos = squareToPos(move.to);
@@ -658,6 +675,222 @@ async function animateMove(move) {
     const promoted = await promotePiece(mover, move.promotion);
     if (stale()) removePiece(promoted); else pieces.set(move.to, promoted);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Kampfszenen (Battle Chess): Beim Schlagen gehen beide Figuren in gegenüberliegende Ecken des Zielfelds, die Kamera
+// fährt in die Kampfansicht, die beiden Figuren werden durch ein vorgerendertes Video mit Alpha ersetzt, danach
+// steht der Sieger in der Feldmitte und die Kamera fährt zurück.
+// Die Kampfkamera hat zu jedem Feld denselben Versatz (gleiche Richtung, gleicher Abstand, gleicher Öffnungswinkel,
+// keine Bildverschiebung): jedes Feld mit seinen Figuren erscheint pixelgleich in der Bildmitte, ein Video passt auf
+// alle Felder. Das Video deckt ein Quadrat der Kantenlänge frac (Anteil der Bildhöhe) ab, um up über der Bildmitte;
+// Start- und Endbild rendert chessApp.battleStudio aus genau diesem Ausschnitt der Kampfkamera vor Grün.
+// ---------------------------------------------------------------------------
+
+// Änderungen an dist, frac, up oder corner verlangen neue Videos (tools/ritter/kampf_studio.mjs, kampf_frames.sh)
+const BATTLE = {
+  dist: 4.4,       // Abstand Kamera - Feldmitte in Feldbreiten
+  frac: 0.85,      // Kantenlänge des quadratischen Videos als Anteil der Bildhöhe
+  up: 0.12,        // Mitte des Videos über der Bildmitte (Anteil der Bildhöhe): die Figuren stehen über der Feldmitte
+  corner: 0.3,     // Abstand der Kämpfer von der Feldmitte je Achse: Weiß vorn links, Schwarz hinten rechts
+  zoom: 1.1,       // s Kamerafahrt hin bzw. zurück
+  fps: 24,
+};
+const battleFrames = new Map();   // Ordner -> Promise<{ frames: Image[], meta }>
+let battleShift = null;           // Bildverschiebung während der Kampfkamera (statt homeFit.shift)
+const battleCanvas = document.createElement('canvas');
+battleCanvas.id = 'battle';
+Object.assign(battleCanvas.style, { position: 'absolute', pointerEvents: 'none', display: 'none' });   // nicht hidden: #scene canvas setzt display
+container.appendChild(battleCanvas);
+
+function battleFor(mover, victim) {
+  const dir = PIECE_SET_LOOK[choice.figuren].battles?.[`${mover.color}${mover.type}-${victim.color}${victim.type}`];
+  return dir ? loadBattle(dir) : null;
+}
+
+function loadBattle(dir) {
+  if (!battleFrames.has(dir)) {
+    battleFrames.set(dir, (async () => {
+      const meta = await (await fetch(`${dir}/meta.json`)).json();
+      const frames = await Promise.all(Array.from({ length: meta.frames }, (_, i) => {
+        const img = new Image();
+        img.src = `${dir}/${String(i).padStart(3, '0')}.webp`;
+        return img.decode().then(() => img);
+      }));
+      return { frames, meta };
+    })());
+  }
+  return battleFrames.get(dir);
+}
+
+// Kampfkamera zum Feld: Position und Blickziel (Blick aus Richtung Weiß, gleiche Neigung wie die Startansicht)
+function battleView(sq) {
+  const c = squareToPos(sq);
+  return { pos: c.clone().add(new THREE.Vector3(0, Math.sin(HOME_ELEVATION), Math.cos(HOME_ELEVATION)).multiplyScalar(BATTLE.dist)),
+    target: c };
+}
+
+// Weiche Kamerafahrt zwischen zwei Ansichten (Position, Blickziel, Bildverschiebung)
+function cameraMove(to, duration) {
+  const p0 = camera.position.clone();
+  const t0 = controls.target.clone();
+  const s0 = battleShift ?? homeFit.shift;
+  return tween(duration, (t) => {
+    camera.position.lerpVectors(p0, to.pos, t);
+    controls.target.lerpVectors(t0, to.target, t);
+    battleShift = s0 + (to.shift - s0) * t;
+    applyLensShift(renderer.domElement.clientWidth, renderer.domElement.clientHeight);
+  });
+}
+
+function homeView() {
+  const side = (playerColor === 'w') !== flipped ? 1 : -1;
+  const d = homeFit.dist;
+  return { pos: new THREE.Vector3(0, Math.sin(HOME_ELEVATION) * d, Math.cos(HOME_ELEVATION) * d * side),
+    target: new THREE.Vector3(0, 0, 0), shift: homeFit.shift };
+}
+
+const yawTowards = (from, to) => Math.atan2(to.x - from.x, to.z - from.z);
+const battleCorners = (centre) => ({
+  w: centre.clone().add(new THREE.Vector3(-BATTLE.corner, 0, BATTLE.corner)),
+  b: centre.clone().add(new THREE.Vector3(BATTLE.corner, 0, -BATTLE.corner)),
+});
+
+function showBattleCanvas(meta) {
+  const w = renderer.domElement.clientWidth;
+  const h = renderer.domElement.clientHeight;
+  const size = h * BATTLE.frac;   // quadratisch, Anteil der Bildhöhe
+  battleCanvas.width = meta.size;
+  battleCanvas.height = meta.size;
+  Object.assign(battleCanvas.style, { width: `${size}px`, height: `${size}px`, left: `${(w - size) / 2}px`,
+    top: `${(h - size) / 2 - BATTLE.up * h}px`, display: 'block' });
+}
+
+function drawFrame(frames, i) {
+  const g = battleCanvas.getContext('2d');
+  g.clearRect(0, 0, battleCanvas.width, battleCanvas.height);
+  g.drawImage(frames[i], 0, 0, battleCanvas.width, battleCanvas.height);
+  battleFrame = i;
+}
+
+// Spielt die Bilder in Echtzeit ab (übersprungene Bilder bei Rucklern statt Zeitlupe); hält am ersten und letzten Bild
+// für den Test (Haltepunkte 'video', 'videoEnde')
+async function playFrames(frames, fps, stale) {
+  drawFrame(frames, 0);
+  await checkpoint('video');
+  await new Promise((done) => {
+    const start = performance.now();
+    const step = () => {
+      const i = Math.floor((performance.now() - start) / 1000 * fps);
+      if (stale() || i >= frames.length) { done(); return; }
+      drawFrame(frames, i);
+      requestAnimationFrame(step);
+    };
+    step();
+  });
+  if (stale()) return;
+  drawFrame(frames, frames.length - 1);
+  await checkpoint('videoEnde');
+}
+let battleFrame = -1;   // zuletzt gezeigtes Bild (Test)
+// Test: mit battleStepping hält der Ablauf an jedem Haltepunkt, bis battleContinue() kommt
+let battleStepping = false;
+let battleGate = null;
+async function checkpoint(name) {
+  battlePhase = name;
+  if (!battleStepping) return;
+  await new Promise((r) => { battleGate = r; });
+  battleGate = null;
+}
+
+async function playBattle(battleP, mover, victim, move, stale) {
+  const centre = squareToPos(move.to);
+  const corner = battleCorners(centre);
+  const mine = corner[mover.color];
+  const theirs = corner[victim.color];
+  const path = movePath(move.piece, mover.group.position.clone(), centre, mover.fig.model);
+  path[path.length - 1] = mine;
+  battlePhase = 'anlauf';
+  const view = { ...battleView(move.to), shift: 0 };
+  const [battle] = await Promise.all([
+    battleP,
+    mover.fig.walkPath(path),
+    victim.fig.walkPath([theirs]),
+    cameraMove(view, Math.max(BATTLE.zoom, mover.fig.travelTime(path))),
+  ]);
+  if (stale()) return;
+  // einander zuwenden (wie im Startbild des Videos)
+  mover.fig.homeFacing = yawTowards(mine, theirs);
+  victim.fig.homeFacing = yawTowards(theirs, mine);
+  await wait(350);
+  if (stale()) return;
+  await checkpoint('bereit');
+  if (stale()) return;
+  showBattleCanvas(battle.meta);
+  mover.group.visible = false;
+  victim.group.visible = false;
+  removePiece(victim);
+  mover.group.position.copy(centre);
+  await playFrames(battle.frames, battle.meta.fps ?? BATTLE.fps, stale);
+  // Der Sieger steht wie im letzten Bild in der Mitte und schaut zur Ecke des Opfers; mit der Rückfahrt der Kamera
+  // dreht er sich in seine Grundrichtung
+  mover.fig.root.rotation.y = mover.fig.homeFacing;
+  mover.group.visible = true;
+  battleCanvas.style.display = 'none';
+  await checkpoint('sieger');
+  mover.fig.homeFacing = BASE_YAW[mover.color];
+  battlePhase = 'zurueck';
+  await cameraMove(homeView(), BATTLE.zoom);
+  battleShift = null;
+  battlePhase = null;
+}
+let battlePhase = null;   // Test: 'anlauf', 'bereit', 'video', 'videoEnde', 'sieger', 'zurueck'
+
+// Studio für die Videovorlagen: rendert Angreifer und Opfer aus der Kampfkamera vor Grün (ohne Brett), quadratisch.
+//   phase 'start': beide in ihren Ecken einander zugewandt; 'end': der Angreifer allein in der Mitte, Blick zur Ecke
+//   des Opfers. Liefert ein PNG als data-URL. Danach Seite neu laden.
+function battleStudio({ attacker = 'wp', victim = 'bp', phase = 'start', size = 1024, background = 0x00ff00 } = {}) {
+  renderer.setAnimationLoop(null);
+  for (const p of livePieces) p.group.visible = false;
+  scene.traverse((o) => { if (o.isMesh && !o.userData.studio) o.visible = false; });
+  scene.background = new THREE.Color(background);
+  scene.fog = null;
+  const sq = 'e4';
+  const centre = squareToPos(sq);
+  const corner = battleCorners(centre);
+  const show = (code, pos, yaw) => {
+    const p = createPiece(code[0], code[1], sq);
+    p.group.position.copy(pos);
+    p.fig.root.rotation.y = yaw;
+    p.group.traverse((o) => { o.userData.studio = true; o.visible = o.userData.outline ? false : o.visible; });
+    p.group.visible = true;
+    const a = p.fig.actions[p.fig.anim];
+    a.time = 0;
+    p.fig.mixer.update(0);
+  };
+  const a = corner[attacker[0]];
+  const v = corner[victim[0]];
+  if (phase === 'start') {
+    show(attacker, a, yawTowards(a, v));
+    show(victim, v, yawTowards(v, a));
+  } else {
+    show(attacker, centre, yawTowards(a, v));
+  }
+  const view = battleView(sq);
+  // Ausschnitt eines (gedachten) Vollbilds der Höhe full: Kantenlänge size, Mitte um up über der Bildmitte
+  const cam = new THREE.PerspectiveCamera(camera.fov, 1, camera.near, camera.far);
+  const full = size / BATTLE.frac;
+  cam.setViewOffset(full, full, (full - size) / 2, (full - size) / 2 - BATTLE.up * full, size, size);
+  cam.position.copy(view.pos);
+  cam.lookAt(view.target);
+  cam.updateMatrixWorld();
+  front.position.copy(FRONT_OFFSET).applyQuaternion(cam.quaternion).add(cam.position);
+  front.target.position.copy(view.target);
+  front.target.updateMatrixWorld();
+  renderer.setPixelRatio(1);
+  renderer.setSize(size, size);
+  renderer.render(scene, cam);
+  return renderer.domElement.toDataURL('image/png');
 }
 
 // ---------------------------------------------------------------------------
@@ -856,7 +1089,7 @@ function computeHomeFit() {
 
 function applyLensShift(w, h) {
   // Positiver Offset verschiebt den Bildausschnitt nach unten, der Inhalt wandert nach oben
-  camera.setViewOffset(w, h, 0, homeFit.shift * h / 2, w, h);
+  camera.setViewOffset(w, h, 0, (battleShift ?? homeFit.shift) * h / 2, w, h);
 }
 
 function cameraHome(animated = true) {
@@ -898,6 +1131,13 @@ function newGame(fen, restore) {
   }
   for (const tw of tweens) tw.resolve();
   tweens.clear();
+  // abgebrochene Kampfszene
+  battleGate?.();
+  battleShift = null;
+  battlePhase = null;
+  battleCanvas.style.display = 'none';
+  controls.target.set(0, 0, 0);
+  if (renderer.domElement.clientWidth) applyLensShift(renderer.domElement.clientWidth, renderer.domElement.clientHeight);
   syncPieces();
   cameraHome(!restore);
   updateUI();
@@ -1052,9 +1292,10 @@ function resize() {
   camera.aspect = w / h;
   computeHomeFit();
   applyLensShift(w, h);
-  if (atHome) cameraHome(false);
+  if (atHome && !battlePhase) cameraHome(false);
 }
 controls.addEventListener('start', () => { atHome = false; });
+controls.enabled = !PIECE_SET_LOOK[choice.figuren].fixedView;
 window.addEventListener('resize', resize);
 resize();
 
@@ -1128,6 +1369,11 @@ window.chessApp = {
     controls.update();
   },
   fps: () => fps,
+  battleStudio,
+  battleStepping: (on) => { battleStepping = on; },
+  battleContinue: () => battleGate?.(),
+  battleState: () => ({ phase: battlePhase, frame: battleFrame, canvas: battleCanvas.style.display === 'none' ? null
+    : battleCanvas.getBoundingClientRect().toJSON(), scene: renderer.domElement.getBoundingClientRect().toJSON() }),
   // Bildschirmkoordinaten (CSS-Pixel) eines Feldmittelpunkts, optional in einer Höhe darüber
   squareToScreen: (sq, height = 0) => {
     const v = squareToPos(sq).setY(height).project(camera);
