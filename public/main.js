@@ -64,7 +64,8 @@ const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, spring
 //   jump:      je Art Sprung im Bogen dieser Höhe (Feldbreiten) statt Gehen, für starre Figuren
 //   hop:       je Art Hüpfen statt Gehen (perSquare: Sprünge je Feld, time: s je Sprung, air: Abstoßen bis Landung
 //              als Anteile des Clips; vorwärts nur in der Flugphase)
-//   fixedView: Kamera fest in der Startansicht (nicht drehbar), nötig für die Kampfszenen
+//   fixedView: während eines Zugs fährt die Kamera in die Startansicht und ist bis zum Ende des Zugs gesperrt
+//              (nötig für die Kampfszenen); dazwischen frei drehbar
 //   battles:   Kampfvideos beim Schlagen (siehe Abschnitt Kampfszenen)
 //   only:      Satz im Aufbau: nur diese Modelle (Datei ohne .glb -> Höhe in Feldbreiten), alle übrigen kommen als
 //              Platzhalter aus dem Satz fallback (mit dessen Einstellungen)
@@ -82,7 +83,7 @@ const PIECE_SET_LOOK = {
   // (Ritter mit Pferdekopf-Helmzier, Lanze, Schild; gehen wie die anderen um die Ecke);
   // Weiß blau, Schwarz geschwärzter Stahl und Rot
   ritter: { only: { bauer_weiss: 1.45, bauer_schwarz: 1.45, laeufer_weiss: 1.7, laeufer_schwarz: 1.7, dame_weiss: 1.8,
-    dame_schwarz: 1.8, koenig_weiss: 2.05, koenig_schwarz: 2.5, turm_weiss: 1.75, turm_schwarz: 1.75,
+    dame_schwarz: 1.8, koenig_weiss: 2.05, koenig_schwarz: 2.5, turm_weiss: 1.4, turm_schwarz: 1.4,
     springer_weiss: 1.6, springer_schwarz: 1.6 }, fallback: 'schnitz',
     top: 2.6, fixedView: true,
     // Kampfszenen wie in Battle Chess: Angreifer (Farbe+Art) - Opfer (Farbe+Art) -> Ordner mit Einzelbildern
@@ -990,9 +991,11 @@ async function playMove(moveInput) {
   selected = null;
   busy = true;
   updateUI();
+  await viewForMove();
   await animateMove(move);
   if (token !== gameToken) return;
   busy = false;
+  controls.enabled = true;
   updateUI();
   if (!game.isGameOver() && game.turn() !== toMove()) await computerTurn();
 }
@@ -1097,6 +1100,21 @@ function applyLensShift(w, h) {
   camera.setViewOffset(w, h, 0, (battleShift ?? homeFit.shift) * h / 2, w, h);
 }
 
+// Sätze mit fixedView: vor dem Zug zurück in die Startansicht, Kamera bis zum Ende des Zugs sperren
+async function viewForMove() {
+  if (!PIECE_SET_LOOK[choice.figuren].fixedView) return;
+  controls.enabled = false;
+  // Nachlauf (Dämpfung) eines Drehens verwerfen: update() ohne Dämpfung leert ihn, die Position bleibt
+  const pos = camera.position.clone();
+  controls.enableDamping = false;
+  controls.update();
+  controls.enableDamping = true;
+  camera.position.copy(pos);
+  // ein Klick auf ein Feld meldet sich bei den Controls auch als Drehen (atHome false), daher die Lage vergleichen
+  if (camera.position.distanceTo(homeView().pos) > 1e-3) await cameraHome();
+  else atHome = true;
+}
+
 function cameraHome(animated = true) {
   const side = (playerColor === 'w') !== flipped ? 1 : -1;
   // Beschriftung zum Betrachter drehen
@@ -1104,13 +1122,13 @@ function cameraHome(animated = true) {
   atHome = true;
   const d = homeFit.dist;
   const target = new THREE.Vector3(0, Math.sin(HOME_ELEVATION) * d, Math.cos(HOME_ELEVATION) * d * side);
-  if (!animated) { camera.position.copy(target); return; }
+  if (!animated) { camera.position.copy(target); return Promise.resolve(); }
   const from = camera.position.clone();
   const r0 = Math.hypot(from.x, from.z);
   const a0 = Math.atan2(from.x, from.z);
   const a1 = Math.atan2(target.x, target.z);
   const r1 = Math.hypot(target.x, target.z);
-  tween(0.9, (t) => {
+  return tween(0.9, (t) => {
     const a = angleLerp(a0, a1, t);
     const r = r0 + (r1 - r0) * t;
     camera.position.set(Math.sin(a) * r, from.y + (target.y - from.y) * t, Math.cos(a) * r);
@@ -1143,6 +1161,7 @@ function newGame(fen, restore) {
   battlePhase = null;
   battleCanvas.style.display = 'none';
   controls.target.set(0, 0, 0);
+  controls.enabled = true;
   if (renderer.domElement.clientWidth) applyLensShift(renderer.domElement.clientWidth, renderer.domElement.clientHeight);
   syncPieces();
   cameraHome(!restore);
@@ -1302,7 +1321,6 @@ function resize() {
   if (atHome && !battlePhase) cameraHome(false);
 }
 controls.addEventListener('start', () => { atHome = false; });
-controls.enabled = !PIECE_SET_LOOK[choice.figuren].fixedView;
 window.addEventListener('resize', resize);
 resize();
 
@@ -1375,6 +1393,8 @@ window.chessApp = {
     controls.target.set(...target);
     controls.update();
   },
+  // Kamera: gesperrt (während eines Zugs bei fixedView), in der Startansicht, Position
+  camera: () => ({ locked: !controls.enabled, home: atHome, pos: camera.position.toArray() }),
   fps: () => fps,
   battleStudio,
   battleStepping: (on) => { battleStepping = on; },

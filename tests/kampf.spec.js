@@ -97,3 +97,46 @@ test('Ritter: Modus „Beide (ohne Computer)“ – Weiß und Schwarz zieht der 
   expect(await page.evaluate(() => window.chessApp.history())).toEqual(['e4']);
   expect(errors).toEqual([]);
 });
+
+test('Ritter: Kamera frei drehbar, beim Zug zurück in die Startansicht und gesperrt', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  await page.goto('/?figurensatz=ritter&brett=schnitz');
+  await page.waitForSelector('body[data-ready="1"]', { timeout: 60_000 });
+  await page.getByTestId('level').selectOption('1');
+  await page.waitForTimeout(1200);
+  const cam = () => page.evaluate(() => window.chessApp.camera());
+  const start = await cam();
+  const away = (c) => Math.hypot(...c.pos.map((v, i) => v - start.pos[i]));
+  expect(start.locked).toBe(false);
+  // mit der Maus drehen
+  await page.mouse.move(500, 450);
+  await page.mouse.down();
+  await page.mouse.move(700, 400, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(1500);
+  const turned = await cam();
+  expect(turned.home).toBe(false);
+  expect(away(turned)).toBeGreaterThan(1);
+  await clickSquare(page, 'e2');
+  await clickSquare(page, 'e4');
+  // sofort gesperrt, dann zurück in die Startansicht (ohne GPU langsam, daher warten statt fester Zeit)
+  expect((await cam()).locked).toBe(true);
+  await page.waitForFunction((p) => {
+    const c = window.chessApp.camera();
+    return Math.hypot(...c.pos.map((v, i) => v - p[i])) < 0.01;
+  }, start.pos, { timeout: 30_000 });
+  // Mausrad und Ziehen ändern während des Zugs nichts
+  await page.mouse.move(500, 450);
+  await page.mouse.wheel(0, -600);
+  await page.mouse.down();
+  await page.mouse.move(700, 400, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(1500);
+  expect(away(await cam())).toBeLessThan(0.01);
+  // nach dem Zug (und der Antwort des Computers) wieder frei
+  await page.waitForFunction(() => window.chessApp.isIdle() && window.chessApp.history().length === 2, null, { timeout: 90_000 });
+  expect((await cam()).locked).toBe(false);
+  expect(errors).toEqual([]);
+});
