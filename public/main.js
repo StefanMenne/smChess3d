@@ -67,6 +67,8 @@ const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, spring
 //   fixedView: während eines Zugs fährt die Kamera in die Startansicht und ist bis zum Ende des Zugs gesperrt
 //              (nötig für die Kampfszenen); dazwischen frei drehbar
 //   battles:   Kampfvideos beim Schlagen (siehe Abschnitt Kampfszenen)
+//   offset:    je Modell (Datei ohne .glb) Versatz auf dem Feld als Anteil der Figurenhöhe: back = nach hinten (gegen
+//              die Blickrichtung), down = ins Brett (Sohlen auf das Brett, wenn eine Stange tiefer reicht)
 //   only:      Satz im Aufbau: nur diese Modelle (Datei ohne .glb -> Höhe in Feldbreiten), alle übrigen kommen als
 //              Platzhalter aus dem Satz fallback (mit dessen Einstellungen)
 const PIECE_SET_LOOK = {
@@ -82,10 +84,14 @@ const PIECE_SET_LOOK = {
   // (Belagerungstürme auf Rädern, Bewegungen aus tools/rig_turm.py; Höhe bis zu den Wimpeln) und Springer
   // (Ritter mit Pferdekopf-Helmzier, Lanze, Schild; gehen wie die anderen um die Ecke);
   // Weiß blau, Schwarz geschwärzter Stahl und Rot
-  ritter: { only: { bauer_weiss: 1.45, bauer_schwarz: 1.45, laeufer_weiss: 1.7, laeufer_schwarz: 1.7, dame_weiss: 1.8,
-    dame_schwarz: 1.8, koenig_weiss: 2.05, koenig_schwarz: 2.5, turm_weiss: 1.4, turm_schwarz: 1.4,
-    springer_weiss: 1.6, springer_schwarz: 1.6 }, fallback: 'schnitz',
-    top: 2.6, fixedView: true,
+  // Höhen am 27.11. zweimal auf 90 % verkleinert (Platz auf dem Feld für die Kampfszenen)
+  ritter: { only: { bauer_weiss: 1.175, bauer_schwarz: 1.175, laeufer_weiss: 1.377, laeufer_schwarz: 1.377,
+    dame_weiss: 1.458, dame_schwarz: 1.458, koenig_weiss: 1.66, koenig_schwarz: 2.025, turm_weiss: 1.134,
+    turm_schwarz: 1.134, springer_weiss: 1.296, springer_schwarz: 1.296 }, fallback: 'schnitz',
+    // Weißer König: Umhang und Fahne verschieben die Umrissmitte, die Füße stünden 0,08 Feldbreiten vor der Feldmitte;
+    // schwarzer König: nur die Schwertspitze berührte das Brett, die Sohlen schwebten (gemessen mit pieceBounds)
+    offset: { koenig_weiss: { back: 0.043, down: 0.003 }, koenig_schwarz: { down: 0.008 } },
+    top: 2.12, fixedView: true,
     // Kampfszenen wie in Battle Chess: Angreifer (Farbe+Art) - Opfer (Farbe+Art) -> Ordner mit Einzelbildern
     battles: { 'wp-bp': 'assets/sets/ritter/kampf/bauer_bauer' } },
 };
@@ -520,6 +526,9 @@ async function loadModels() {
         if (look.rigid) m.rigid = true;
         if (look.jump?.[name]) m.jump = look.jump[name];
         m.pieceHeight = ownHeight ?? (look.height ? look.height[name] : m.height * look.scale);
+        // Modell: vorn = +Z; der Fußpunkt wird vom Ursprung abgezogen, ein größerer Fußpunkt verschiebt die Figur zurück
+        const off = look.offset?.[file];
+        if (off) m.foot = m.foot.clone().add(new THREE.Vector3(0, (off.down ?? 0) * m.height, (off.back ?? 0) * m.height));
         templates[color + type] = m;
       }));
     }
@@ -1392,6 +1401,36 @@ window.chessApp = {
     camera.position.set(...pos);
     controls.target.set(...target);
     controls.update();
+  },
+  // Lage einer Figur in der aktuellen Animationsphase (Feldbreiten, relativ zur Feldmitte; z > 0 = Richtung Weiß):
+  // tiefster Punkt, Umriss und Schwerpunkt der Punkte bis 3 % der Höhe über dem tiefsten (Sohlen, Saum)
+  pieceBounds(sq, raw = false) {
+    const p = pieces.get(sq);
+    if (!p) return null;
+    p.group.updateMatrixWorld(true);
+    const c = squareToPos(sq);
+    const pts = [];
+    const v = new THREE.Vector3();
+    p.group.traverse((o) => {
+      if (!o.isSkinnedMesh && !o.isMesh) return;
+      if (o.userData.outline) return;
+      const pos = o.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i += 2) {
+        o.getVertexPosition(i, v);
+        v.applyMatrix4(o.matrixWorld);
+        pts.push([v.x - c.x, v.y, v.z - c.z]);
+      }
+    });
+    if (raw) return pts;
+    const ext = (k, f) => f(...pts.map((q) => q[k]));
+    const y0 = ext(1, Math.min);
+    const h = ext(1, Math.max) - y0;
+    const low = pts.filter((q) => q[1] < y0 + 0.03 * h);
+    const mean = (arr, k) => arr.reduce((a, q) => a + q[k], 0) / arr.length;
+    return { minY: y0, height: h, x: [ext(0, Math.min), ext(0, Math.max)], z: [ext(2, Math.min), ext(2, Math.max)],
+      lowX: [Math.min(...low.map((q) => q[0])), Math.max(...low.map((q) => q[0]))],
+      lowZ: [Math.min(...low.map((q) => q[2])), Math.max(...low.map((q) => q[2]))],
+      lowMean: [mean(low, 0), mean(low, 2)], all: [mean(pts, 0), mean(pts, 2)] };
   },
   // Kamera: gesperrt (während eines Zugs bei fixedView), in der Startansicht, Position
   camera: () => ({ locked: !controls.enabled, home: atHome, pos: camera.position.toArray() }),
