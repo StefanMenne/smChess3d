@@ -76,12 +76,12 @@ const PIECE_SET_LOOK = {
   // Ritter (tools/ritter): bisher Bauern (Speer und Schild; Höhe bis zur Speerspitze), Läufer (Kampfbischöfe mit
   // Hammer und Buch), Damen (Zepter, Reichsapfel) und Könige (Fahne, Schwert; Höhe bis zur Fahnenspitze, beim
   // schwarzen König weht die Fahne hoch über der Krone, die Krone sitzt bei beiden auf gleicher Höhe) und Türme
-  // (Belagerungstürme auf Rädern, Bewegungen aus tools/rig_turm.py; Höhe bis zu den Wimpeln) und der weiße Springer
-  // (Ritter mit Pferdekopf-Helmzier, Lanze, Schild; geht wie die anderen um die Ecke);
-  // Weiß blau, Schwarz geschwärzter Stahl und Rot; der Rest sind Schnitzfiguren als Platzhalter
+  // (Belagerungstürme auf Rädern, Bewegungen aus tools/rig_turm.py; Höhe bis zu den Wimpeln) und Springer
+  // (Ritter mit Pferdekopf-Helmzier, Lanze, Schild; gehen wie die anderen um die Ecke);
+  // Weiß blau, Schwarz geschwärzter Stahl und Rot
   ritter: { only: { bauer_weiss: 1.45, bauer_schwarz: 1.45, laeufer_weiss: 1.7, laeufer_schwarz: 1.7, dame_weiss: 1.8,
     dame_schwarz: 1.8, koenig_weiss: 2.05, koenig_schwarz: 2.5, turm_weiss: 1.75, turm_schwarz: 1.75,
-    springer_weiss: 1.6 }, fallback: 'schnitz',
+    springer_weiss: 1.6, springer_schwarz: 1.6 }, fallback: 'schnitz',
     top: 2.6 },
 };
 

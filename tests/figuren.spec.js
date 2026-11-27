@@ -41,7 +41,7 @@ test('Standard beim ersten Start: Schnitzbrett und Schnitzfiguren', async ({ pag
   expect(errors).toEqual([]);
 });
 
-test('Ritter (im Aufbau): Bauern, Läufer, Damen, Könige und Türme beider Farben, weißer Springer, die übrigen Figuren sind Platzhalter', async ({ page }) => {
+test('Ritter (im Aufbau): Bauern, Läufer, Damen, Könige, Türme und Springer beider Farben', async ({ page }) => {
   test.setTimeout(360_000);   // viele Züge und Nahaufnahmen
   const errors = await open(page, '?figurensatz=ritter&brett=schnitz');
   await expect(page.getByTestId('piece-set')).toHaveValue('ritter');
@@ -111,6 +111,12 @@ test('Ritter (im Aufbau): Bauern, Läufer, Damen, Könige und Türme beider Farb
   await page.evaluate(() => window.chessApp.setView([2.6, 1.6, 1.2], [2.5, 0.8, 3.5]));
   await page.waitForTimeout(1000);
   await page.screenshot({ path: `${SHOTS}/ritter_12_springer.png` });
+  // schwarzer Springer g8 von vorn (Schwarz zieht der Computer, die Bewegungen sind dieselben wie beim weißen)
+  await page.evaluate(() => window.chessApp.newGame());
+  expect(await page.evaluate(() => window.chessApp.pieceAt('g8'))).toBe('bn');
+  await page.evaluate(() => window.chessApp.setView([1.4, 1.5, -1.4], [1.9, 0.7, -3.5]));
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: `${SHOTS}/ritter_12_springer_schwarz.png` });
   expect(errors).toEqual([]);
 });
 
