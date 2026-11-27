@@ -899,6 +899,9 @@ function battleStudio({ attacker = 'wp', victim = 'bp', phase = 'start', size = 
 
 const game = new Chess();
 let playerColor = 'w';
+// Ritter: beide Seiten selbst ziehen, ohne Computer (zum Ansehen der Animationen; playerColor bleibt 'w' für die Kamera)
+let hotseat = false;
+const toMove = () => (hotseat ? game.turn() : playerColor);
 let selected = null;
 let busy = false;
 let thinking = false;
@@ -942,6 +945,7 @@ function refreshMarks() {
 
 function resultText() {
   if (game.isCheckmate()) {
+    if (hotseat) return `Schachmatt – ${game.turn() === 'w' ? 'Schwarz' : 'Weiß'} gewinnt.`;
     return game.turn() === playerColor ? 'Schachmatt – der Computer gewinnt.' : 'Schachmatt – du gewinnst!';
   }
   if (game.isStalemate()) return 'Patt – Remis.';
@@ -956,7 +960,8 @@ function updateUI() {
   statusEl.classList.toggle('over', !!result);
   if (result) statusEl.textContent = result;
   else if (thinking) statusEl.textContent = 'Computer denkt nach …';
-  else if (busy) statusEl.textContent = game.turn() === playerColor ? 'Computer zieht …' : 'Dein Zug läuft …';
+  else if (busy) statusEl.textContent = hotseat ? 'Zug läuft …' : game.turn() === playerColor ? 'Computer zieht …' : 'Dein Zug läuft …';
+  else if (hotseat) statusEl.textContent = `${game.turn() === 'w' ? 'Weiß' : 'Schwarz'} ist am Zug${game.inCheck() ? ' (Schach!)' : ''}.`;
   else if (game.turn() === playerColor) statusEl.textContent = game.inCheck() ? 'Schach! Du bist am Zug.' : 'Du bist am Zug.';
   else statusEl.textContent = 'Computer ist am Zug.';
 
@@ -968,7 +973,7 @@ function updateUI() {
     movesEl.appendChild(li);
   }
   movesEl.scrollTop = movesEl.scrollHeight;
-  undoBtn.disabled = busy || thinking || !game.history().some((_, i) => (i % 2 === 0) === (startTurn() === playerColor));
+  undoBtn.disabled = busy || thinking || (hotseat ? !game.history().length : !game.history().some((_, i) => (i % 2 === 0) === (startTurn() === playerColor)));
   refreshMarks();
 }
 
@@ -989,7 +994,7 @@ async function playMove(moveInput) {
   if (token !== gameToken) return;
   busy = false;
   updateUI();
-  if (!game.isGameOver() && game.turn() !== playerColor) await computerTurn();
+  if (!game.isGameOver() && game.turn() !== toMove()) await computerTurn();
 }
 
 async function computerTurn() {
@@ -1022,7 +1027,7 @@ function choosePromotion() {
 }
 
 async function onSquareClicked(sq) {
-  if (busy || thinking || game.isGameOver() || game.turn() !== playerColor || !sq) return;
+  if (busy || thinking || game.isGameOver() || game.turn() !== toMove() || !sq) return;
   const piece = game.get(sq);
 
   if (selected) {
@@ -1038,7 +1043,7 @@ async function onSquareClicked(sq) {
       return;
     }
   }
-  selected = piece && piece.color === playerColor && sq !== selected ? sq : null;
+  selected = piece && piece.color === toMove() && sq !== selected ? sq : null;
   refreshMarks();
 }
 
@@ -1121,7 +1126,8 @@ function newGame(fen, restore) {
   selected = null;
   lastMove = null;
   flipped = restore?.flipped ?? false;
-  playerColor = colorSel.value;
+  hotseat = colorSel.value === 'beide';
+  playerColor = hotseat ? 'w' : colorSel.value || 'w';
   game.reset();
   if (restore?.pgn) {
     try { game.loadPgn(restore.pgn); } catch { game.reset(); }
@@ -1141,14 +1147,14 @@ function newGame(fen, restore) {
   syncPieces();
   cameraHome(!restore);
   updateUI();
-  if (!game.isGameOver() && game.turn() !== playerColor) computerTurn();
+  if (!game.isGameOver() && game.turn() !== toMove()) computerTurn();
 }
 
 function undo() {
   if (busy || thinking || !game.history().length) return;
   game.undo();
-  while (game.history().length && game.turn() !== playerColor) game.undo();
-  if (game.turn() !== playerColor) {
+  while (game.history().length && game.turn() !== toMove()) game.undo();
+  if (game.turn() !== toMove()) {
     // Stellung, in der der Computer anfängt – nicht weiter zurück
     const moves = game.history({ verbose: true });
     lastMove = moves[moves.length - 1] || null;
@@ -1192,6 +1198,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 $('newGame').addEventListener('click', () => newGame());
 undoBtn.addEventListener('click', undo);
 $('flip').addEventListener('click', () => { flipped = !flipped; cameraHome(); });
+if (PIECE_SET_LOOK[choice.figuren].battles) colorSel.add(new Option('Beide (ohne Computer)', 'beide'));
 colorSel.addEventListener('change', () => newGame());
 
 const infoDlg = $('info');
@@ -1268,7 +1275,7 @@ for (const [id, sets, prop] of [['boardSet', BOARD_SETS, 'brett'], ['pieceSet', 
     choice[prop] = sel.value;
     try {
       localStorage.setItem(SET_KEY, JSON.stringify(choice));
-      sessionStorage.setItem(GAME_KEY, JSON.stringify({ pgn: game.pgn(), color: playerColor, level: levelSel.value, flipped }));
+      sessionStorage.setItem(GAME_KEY, JSON.stringify({ pgn: game.pgn(), color: colorSel.value, level: levelSel.value, flipped }));
     } catch { /* egal */ }
     // Testparameter (?brett, ?figurensatz) entfernen, sonst überschreiben sie die neue Auswahl
     const q = new URLSearchParams(location.search);

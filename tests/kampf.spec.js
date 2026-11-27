@@ -72,3 +72,28 @@ test('Ritter: weißer Bauer schlägt schwarzen Bauern mit Kampfvideo (exd5)', as
   await page.screenshot({ path: `${SHOTS}/kampf_7_zurueck.png` });
   expect(errors).toEqual([]);
 });
+
+test('Ritter: Modus „Beide (ohne Computer)“ – Weiß und Schwarz zieht der Spieler', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?figurensatz=ritter&brett=schnitz');
+  await page.waitForSelector('body[data-ready="1"]', { timeout: 60_000 });
+  await page.getByTestId('color').selectOption('beide');
+  await page.waitForTimeout(800);
+  // langsame GPU: ein Zug kann bei wenigen Bildern/s deutlich länger dauern
+  const idle = (n) => page.waitForFunction((k) => window.chessApp.isIdle() && window.chessApp.history().length === k, n,
+    { timeout: 90_000 });
+  await clickSquare(page, 'e2');
+  await clickSquare(page, 'e4');
+  await idle(1);
+  await page.waitForTimeout(1500);   // der Computer darf nicht antworten
+  expect(await page.evaluate(() => window.chessApp.history())).toEqual(['e4']);
+  await expect(page.getByTestId('status')).toHaveText('Schwarz ist am Zug.');
+  await clickSquare(page, 'd7');
+  await clickSquare(page, 'd5');
+  await idle(2);
+  expect(await page.evaluate(() => window.chessApp.history())).toEqual(['e4', 'd5']);
+  await page.getByTestId('undo').click();
+  expect(await page.evaluate(() => window.chessApp.history())).toEqual(['e4']);
+  expect(errors).toEqual([]);
+});
