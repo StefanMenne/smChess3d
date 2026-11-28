@@ -98,8 +98,11 @@ const PIECE_SET_LOOK = {
     offset: { koenig_weiss: { back: 0.043, down: 0.003 }, koenig_schwarz: { down: 0.008 } },
     top: 2.12, fixedView: true,
     // Kampfszenen wie in Battle Chess: Angriffs- und Sterbevideos (Farbe+Art -> Ordner mit Einzelbildern)
-    attacks: Object.fromEntries(['wp', 'bp', 'wn', 'bn', 'wb', 'bb', 'wr', 'br'].map((c) => [c, battleDir('angriff', c)])),
-    deaths: Object.fromEntries(['wp', 'bp', 'wn', 'bn', 'wb', 'bb', 'wr', 'br'].map((c) => [c, battleDir('tod', c)])) },
+    // Schlagen mit Kampfvideo nur, wenn es Angriff des Schlagenden und Tod des Geschlagenen gibt
+    attacks: Object.fromEntries(['p', 'n', 'b', 'r', 'q'].flatMap((t) => ['w' + t, 'b' + t])
+      .map((c) => [c, battleDir('angriff', c)])),
+    deaths: Object.fromEntries(['p', 'n', 'b', 'r', 'q'].flatMap((t) => ['w' + t, 'b' + t])
+      .map((c) => [c, battleDir('tod', c)])) },
 };
 
 // ---------------------------------------------------------------------------
@@ -723,9 +726,10 @@ Object.assign(battleCanvas.style, { position: 'absolute', pointerEvents: 'none',
 container.appendChild(battleCanvas);
 
 // Kampfszene als Bildfolge: { meta: { size, fps }, count, draw(g, i) }. Entweder ein Video je Paar (battles) oder ein
-// Angriffsvideo und ein Sterbevideo (attacks, deaths), zusammengesetzt: das Opfer steht bis zum Trefferbild des
-// Angriffs (meta.hit) als erstes Bild seines Sterbevideos da, dann läuft es und wird zum Schluss ausgeblendet
-// (BATTLE.fade Bilder). Weiß steht vorn links und wird immer über Schwarz gezeichnet.
+// Angriffsvideo und ein Sterbevideo (attacks, deaths), zusammengesetzt: das Sterbevideo startet so, dass sein
+// Reaktionsbild (meta.react) auf das Trefferbild des Angriffs (meta.hit) fällt; davor steht das Opfer als erstes
+// Bild da (genau die Figur aus dem Studio). Zum Schluss wird es ausgeblendet (BATTLE.fade Bilder). Weiß steht vorn
+// links und wird immer über Schwarz gezeichnet.
 function battleFor(mover, victim) {
   const look = PIECE_SET_LOOK[choice.figuren];
   const a = `${mover.color}${mover.type}`;
@@ -739,19 +743,22 @@ function battleFor(mover, victim) {
   const vd = look.deaths?.[v];
   if (!ad || !vd) return null;
   return Promise.all([loadBattle(ad), loadBattle(vd)]).then(([atk, die]) => {
-    const hit = atk.meta.hit;
+    // Bild, bei dem das Sterbevideo beginnt; reagiert das Opfer später als der Angriff trifft, wartet der Angreifer
+    // so lange auf seinem ersten Bild (sonst begänne das Sterbevideo mitten drin, mit einem Sprung)
+    const wait = Math.max(0, (die.meta.react ?? 0) - atk.meta.hit);
+    const start = atk.meta.hit - (die.meta.react ?? 0) + wait;
     const n = die.frames.length;
     const drawVictim = (g, i) => {
-      const j = Math.max(0, i - hit);
+      const j = Math.max(0, i - start);
       if (j >= n) return;
       g.globalAlpha = Math.min(1, (n - j) / BATTLE.fade);
       g.drawImage(die.frames[j], 0, 0, g.canvas.width, g.canvas.height);
       g.globalAlpha = 1;
     };
-    const drawAttacker = (g, i) => g.drawImage(atk.frames[Math.min(i, atk.frames.length - 1)], 0, 0,
+    const drawAttacker = (g, i) => g.drawImage(atk.frames[Math.min(Math.max(0, i - wait), atk.frames.length - 1)], 0, 0,
       g.canvas.width, g.canvas.height);
     const order = mover.color === 'w' ? [drawVictim, drawAttacker] : [drawAttacker, drawVictim];
-    return { meta: atk.meta, count: Math.max(atk.frames.length, hit + n),
+    return { meta: atk.meta, count: Math.max(atk.frames.length + wait, start + n),
       draw: (g, i) => order.forEach((d) => d(g, i)) };
   });
 }

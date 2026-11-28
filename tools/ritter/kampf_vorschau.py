@@ -24,7 +24,10 @@ BG = (92, 64, 40)
 atk = json.loads(Path(atk_dir, 'meta.json').read_text())
 die = json.loads(Path(die_dir, 'meta.json').read_text())
 hit, n_atk, n_die = atk['hit'], atk['frames'], die['frames']
-count = max(n_atk, hit + n_die)
+die_from = die.get('react', die_from)   # neue Sterbevideos: ungekürzt, Reaktionsbild in meta.json
+wait = max(0, die_from - hit)           # wie im Spiel: Angreifer wartet, wenn das Opfer später reagiert
+start = hit - die_from + wait           # Bild, bei dem das Sterbevideo beginnt
+count = max(n_atk + wait, start + n_die)
 fps = atk.get('fps', 24)
 
 
@@ -35,8 +38,8 @@ def frame(d, i):
 with tempfile.TemporaryDirectory() as tmp:
     for i in range(count):
         img = Image.new('RGBA', (SIZE, SIZE), BG + (255,))
-        a = frame(atk_dir, min(i, n_atk - 1))
-        j = max(0, i - hit)
+        a = frame(atk_dir, min(max(0, i - wait), n_atk - 1))
+        j = max(0, i - start)
         v = None
         if j < n_die:
             v = frame(die_dir, j)
@@ -50,13 +53,15 @@ with tempfile.TemporaryDirectory() as tmp:
         img.convert('RGB').save(f'{tmp}/{i:04d}.png')
     # Ton des Sterbevideos: sein Bild die_from erscheint beim Treffer -> um (hit - die_from) Bilder verschieben.
     # Statt einer MP4 darf '-' stehen (Bilder aus dem Studio, ohne Ton).
-    shift = (hit - die_from) / fps
+    shift = start / fps
     move = f'adelay={int(shift * 1000)}:all=1' if shift >= 0 else f'atrim=start={-shift},asetpts=PTS-STARTPTS'
     cmd = ['ffmpeg', '-loglevel', 'error', '-y', '-framerate', str(fps), '-i', f'{tmp}/%04d.png']
     sounds = []
     for k, (mp4, filt) in enumerate([(atk_mp4, 'anull'), (die_mp4, move)]):
         if mp4 != '-':
             cmd += ['-i', mp4]
+            if k == 0 and wait:
+                filt = f'adelay={int(wait / fps * 1000)}:all=1'
             sounds.append(f'[{len(sounds) + 1}:a]{filt}[s{k}]')
     if sounds:
         labels = ''.join(x[x.rindex('['):] for x in sounds)

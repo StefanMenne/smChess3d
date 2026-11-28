@@ -222,6 +222,24 @@ test('Ritter: Türme schlagen Türme, beide Farben (Txe5 Txe5, Modus Beide)', as
   expect(errors).toEqual([]);
 });
 
+test('Ritter: Damen schlagen Bauern mit Zauberblitz, beide Farben (Modus Beide)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await captures(page, '6k1/7q/8/4p3/8/8/7P/Q3K3 w - - 0 1',
+    [['a1', 'e5', 'kampf_dame_blau'], ['h7', 'h2', 'kampf_dame_rot']]);
+  expect(await page.evaluate(() => window.chessApp.history())).toEqual(['Qxe5', 'Qxh2']);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('h2'))).toBe('bq');
+  expect(errors).toEqual([]);
+});
+
+test('Ritter: Damen schlagen Damen, beide Farben (Dxe5 Dxe5, Modus Beide)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await captures(page, '6k1/8/8/q3q3/8/8/8/4QK2 w - - 0 1',
+    [['e1', 'e5', 'kampf_damen_blau'], ['a5', 'e5', 'kampf_damen_rot']]);
+  expect(await page.evaluate(() => window.chessApp.history())).toEqual(['Qxe5', 'Qxe5']);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('e5'))).toBe('bq');
+  expect(errors).toEqual([]);
+});
+
 test('Ritter: Springer schlagen Springer, beide Farben (Sxe5 Sxe5, Modus Beide)', async ({ page }) => {
   test.setTimeout(240_000);
   const errors = await captures(page, '4k3/8/2n5/4n3/8/5N2/8/4K3 w - - 0 1',
