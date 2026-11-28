@@ -29,6 +29,8 @@ test('Ritter: weißer Bauer schlägt schwarzen Bauern mit Kampfvideo (exd5)', as
   await page.evaluate(() => window.chessApp.battleStepping(true));
   await page.waitForTimeout(1200);
   const home = await page.evaluate(() => window.chessApp.squareToScreen('d5'));
+  const hoehe = () => page.evaluate(() => window.chessApp.pieceBounds('d1').height);   // unbeteiligte Dame
+  const h0 = await hoehe();
   await clickSquare(page, 'e4');
   await clickSquare(page, 'd5');
 
@@ -43,6 +45,7 @@ test('Ritter: weißer Bauer schlägt schwarzen Bauern mit Kampfvideo (exd5)', as
     await page.screenshot({ path: `${SHOTS}/${shot}.png` });
   };
   await step('bereit', 'kampf_2_vorher');
+  expect((await hoehe()) / h0).toBeCloseTo(0.9, 2);   // im Kampf alle Figuren auf 0,9 (BATTLE.shrink)
   await page.evaluate(() => window.chessApp.battleContinue());
   await step('video', 'kampf_3_video_erstes');
   // Video: beide Figuren sind ersetzt, das Feld liegt exakt in der Bildmitte, das Video sitzt über der Mitte
@@ -69,6 +72,7 @@ test('Ritter: weißer Bauer schlägt schwarzen Bauern mit Kampfvideo (exd5)', as
   expect(await page.evaluate(() => window.chessApp.pieceAt('d5'))).toMatch(/^(wp|b.)$/);   // Schwarz darf zurückschlagen
   const back = await page.evaluate(() => window.chessApp.squareToScreen('d5'));
   expect(Math.abs(back.x - home.x) + Math.abs(back.y - home.y)).toBeLessThan(1);
+  expect((await hoehe()) / h0).toBeCloseTo(1, 2);   // danach wieder volle Größe (Idle atmet etwas)
   await page.screenshot({ path: `${SHOTS}/kampf_7_zurueck.png` });
   expect(errors).toEqual([]);
 });

@@ -703,11 +703,13 @@ const BATTLE = {
   frac: 0.85,      // Kantenlänge des quadratischen Videos als Anteil der Bildhöhe
   up: 0.12,        // Mitte des Videos über der Bildmitte (Anteil der Bildhöhe): die Figuren stehen über der Feldmitte
   corner: 0.3,     // Abstand der Kämpfer von der Feldmitte je Achse: Weiß vorn links, Schwarz hinten rechts
+  shrink: 0.9,     // alle Figuren während der Kampfkamera auf diese Größe (Platz auf dem Feld), sanft mit der Kamerafahrt
   zoom: 1.1,       // s Kamerafahrt hin bzw. zurück
   fps: 24,
 };
 const battleFrames = new Map();   // Ordner -> Promise<{ frames: Image[], meta }>
 let battleShift = null;           // Bildverschiebung während der Kampfkamera (statt homeFit.shift)
+let battleScale = 1;              // Größe aller Figuren (BATTLE.shrink in der Kampfkamera)
 const battleCanvas = document.createElement('canvas');
 battleCanvas.id = 'battle';
 Object.assign(battleCanvas.style, { position: 'absolute', pointerEvents: 'none', display: 'none' });   // nicht hidden: #scene canvas setzt display
@@ -740,15 +742,18 @@ function battleView(sq) {
     target: c };
 }
 
-// Weiche Kamerafahrt zwischen zwei Ansichten (Position, Blickziel, Bildverschiebung)
+// Weiche Kamerafahrt zwischen zwei Ansichten (Position, Blickziel, Bildverschiebung, Größe aller Figuren)
 function cameraMove(to, duration) {
   const p0 = camera.position.clone();
   const t0 = controls.target.clone();
   const s0 = battleShift ?? homeFit.shift;
+  const g0 = battleScale;
   return tween(duration, (t) => {
     camera.position.lerpVectors(p0, to.pos, t);
     controls.target.lerpVectors(t0, to.target, t);
     battleShift = s0 + (to.shift - s0) * t;
+    battleScale = g0 + (to.scale - g0) * t;
+    for (const p of livePieces) p.group.scale.setScalar(battleScale);
     applyLensShift(renderer.domElement.clientWidth, renderer.domElement.clientHeight);
   });
 }
@@ -757,7 +762,7 @@ function homeView() {
   const side = (playerColor === 'w') !== flipped ? 1 : -1;
   const d = homeFit.dist;
   return { pos: new THREE.Vector3(0, Math.sin(HOME_ELEVATION) * d, Math.cos(HOME_ELEVATION) * d * side),
-    target: new THREE.Vector3(0, 0, 0), shift: homeFit.shift };
+    target: new THREE.Vector3(0, 0, 0), shift: homeFit.shift, scale: 1 };
 }
 
 const yawTowards = (from, to) => Math.atan2(to.x - from.x, to.z - from.z);
@@ -821,7 +826,7 @@ async function playBattle(battleP, mover, victim, move, stale) {
   const path = movePath(move.piece, mover.group.position.clone(), centre, mover.fig.model);
   path[path.length - 1] = mine;
   battlePhase = 'anlauf';
-  const view = { ...battleView(move.to), shift: 0 };
+  const view = { ...battleView(move.to), shift: 0, scale: BATTLE.shrink };
   const [battle] = await Promise.all([
     battleP,
     mover.fig.walkPath(path),
@@ -871,6 +876,7 @@ function battleStudio({ attacker = 'wp', victim = 'bp', phase = 'start', size = 
   const show = (code, pos, yaw) => {
     const p = createPiece(code[0], code[1], sq);
     p.group.position.copy(pos);
+    p.group.scale.setScalar(BATTLE.shrink);
     p.fig.root.rotation.y = yaw;
     p.group.traverse((o) => { o.userData.studio = true; o.visible = o.userData.outline ? false : o.visible; });
     p.group.visible = true;
@@ -1168,6 +1174,8 @@ function newGame(fen, restore) {
   battleGate?.();
   battleShift = null;
   battlePhase = null;
+  battleScale = 1;
+  for (const p of livePieces) p.group.scale.setScalar(1);
   battleCanvas.style.display = 'none';
   controls.target.set(0, 0, 0);
   controls.enabled = true;
