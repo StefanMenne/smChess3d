@@ -66,7 +66,9 @@ const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, spring
 //              als Anteile des Clips; vorwärts nur in der Flugphase)
 //   fixedView: während eines Zugs fährt die Kamera in die Startansicht und ist bis zum Ende des Zugs gesperrt
 //              (nötig für die Kampfszenen); dazwischen frei drehbar
-//   battles:   Kampfvideos beim Schlagen (siehe Abschnitt Kampfszenen)
+//   battles:   Kampfvideos beim Schlagen, je Paar ein Video (siehe Abschnitt Kampfszenen)
+//   attacks, deaths: getrennte Angriffs- und Sterbevideos je Figur (Farbe+Art), werden zusammengesetzt; ein Paar in
+//              battles hat Vorrang
 //   offset:    je Modell (Datei ohne .glb) Versatz auf dem Feld als Anteil der Figurenhöhe: back = nach hinten (gegen
 //              die Blickrichtung), down = ins Brett (Sohlen auf das Brett, wenn eine Stange tiefer reicht)
 //   only:      Satz im Aufbau: nur diese Modelle (Datei ohne .glb -> Höhe in Feldbreiten), alle übrigen kommen als
@@ -92,8 +94,9 @@ const PIECE_SET_LOOK = {
     // schwarzer König: nur die Schwertspitze berührte das Brett, die Sohlen schwebten (gemessen mit pieceBounds)
     offset: { koenig_weiss: { back: 0.043, down: 0.003 }, koenig_schwarz: { down: 0.008 } },
     top: 2.12, fixedView: true,
-    // Kampfszenen wie in Battle Chess: Angreifer (Farbe+Art) - Opfer (Farbe+Art) -> Ordner mit Einzelbildern
-    battles: { 'wp-bp': 'assets/sets/ritter/kampf/bauer_bauer' } },
+    // Kampfszenen wie in Battle Chess: Angriffs- und Sterbevideos (Farbe+Art -> Ordner mit Einzelbildern)
+    attacks: { wp: 'assets/sets/ritter/kampf/angriff/bauer_weiss' },
+    deaths: { bp: 'assets/sets/ritter/kampf/tod/bauer_schwarz' } },
 };
 
 // ---------------------------------------------------------------------------
@@ -702,10 +705,11 @@ const BATTLE = {
   dist: 4.4,       // Abstand Kamera - Feldmitte in Feldbreiten
   frac: 0.85,      // Kantenlänge des quadratischen Videos als Anteil der Bildhöhe
   up: 0.12,        // Mitte des Videos über der Bildmitte (Anteil der Bildhöhe): die Figuren stehen über der Feldmitte
-  corner: 0.3,     // Abstand der Kämpfer von der Feldmitte je Achse: Weiß vorn links, Schwarz hinten rechts
+  corner: 0.35,    // Abstand der Kämpfer von der Feldmitte je Achse: Weiß vorn links, Schwarz hinten rechts
   shrink: 0.9,     // alle Figuren während der Kampfkamera auf diese Größe (Platz auf dem Feld), sanft mit der Kamerafahrt
   zoom: 1.1,       // s Kamerafahrt hin bzw. zurück
   fps: 24,
+  fade: 12,        // Bilder, über die das Opfer am Ende seines Sterbevideos ausgeblendet wird
 };
 const battleFrames = new Map();   // Ordner -> Promise<{ frames: Image[], meta }>
 let battleShift = null;           // Bildverschiebung während der Kampfkamera (statt homeFit.shift)
@@ -715,9 +719,38 @@ battleCanvas.id = 'battle';
 Object.assign(battleCanvas.style, { position: 'absolute', pointerEvents: 'none', display: 'none' });   // nicht hidden: #scene canvas setzt display
 container.appendChild(battleCanvas);
 
+// Kampfszene als Bildfolge: { meta: { size, fps }, count, draw(g, i) }. Entweder ein Video je Paar (battles) oder ein
+// Angriffsvideo und ein Sterbevideo (attacks, deaths), zusammengesetzt: das Opfer steht bis zum Trefferbild des
+// Angriffs (meta.hit) als erstes Bild seines Sterbevideos da, dann läuft es und wird zum Schluss ausgeblendet
+// (BATTLE.fade Bilder). Weiß steht vorn links und wird immer über Schwarz gezeichnet.
 function battleFor(mover, victim) {
-  const dir = PIECE_SET_LOOK[choice.figuren].battles?.[`${mover.color}${mover.type}-${victim.color}${victim.type}`];
-  return dir ? loadBattle(dir) : null;
+  const look = PIECE_SET_LOOK[choice.figuren];
+  const a = `${mover.color}${mover.type}`;
+  const v = `${victim.color}${victim.type}`;
+  const pair = look.battles?.[`${a}-${v}`];
+  if (pair) {
+    return loadBattle(pair).then(({ frames, meta }) => ({ meta, count: frames.length,
+      draw: (g, i) => g.drawImage(frames[i], 0, 0, g.canvas.width, g.canvas.height) }));
+  }
+  const ad = look.attacks?.[a];
+  const vd = look.deaths?.[v];
+  if (!ad || !vd) return null;
+  return Promise.all([loadBattle(ad), loadBattle(vd)]).then(([atk, die]) => {
+    const hit = atk.meta.hit;
+    const n = die.frames.length;
+    const drawVictim = (g, i) => {
+      const j = Math.max(0, i - hit);
+      if (j >= n) return;
+      g.globalAlpha = Math.min(1, (n - j) / BATTLE.fade);
+      g.drawImage(die.frames[j], 0, 0, g.canvas.width, g.canvas.height);
+      g.globalAlpha = 1;
+    };
+    const drawAttacker = (g, i) => g.drawImage(atk.frames[Math.min(i, atk.frames.length - 1)], 0, 0,
+      g.canvas.width, g.canvas.height);
+    const order = mover.color === 'w' ? [drawVictim, drawAttacker] : [drawAttacker, drawVictim];
+    return { meta: atk.meta, count: Math.max(atk.frames.length, hit + n),
+      draw: (g, i) => order.forEach((d) => d(g, i)) };
+  });
 }
 
 function loadBattle(dir) {
@@ -781,30 +814,30 @@ function showBattleCanvas(meta) {
     top: `${(h - size) / 2 - BATTLE.up * h}px`, display: 'block' });
 }
 
-function drawFrame(frames, i) {
+function drawFrame(battle, i) {
   const g = battleCanvas.getContext('2d');
   g.clearRect(0, 0, battleCanvas.width, battleCanvas.height);
-  g.drawImage(frames[i], 0, 0, battleCanvas.width, battleCanvas.height);
+  battle.draw(g, i);
   battleFrame = i;
 }
 
 // Spielt die Bilder in Echtzeit ab (übersprungene Bilder bei Rucklern statt Zeitlupe); hält am ersten und letzten Bild
 // für den Test (Haltepunkte 'video', 'videoEnde')
-async function playFrames(frames, fps, stale) {
-  drawFrame(frames, 0);
+async function playFrames(battle, fps, stale) {
+  drawFrame(battle, 0);
   await checkpoint('video');
   await new Promise((done) => {
     const start = performance.now();
     const step = () => {
       const i = Math.floor((performance.now() - start) / 1000 * fps);
-      if (stale() || i >= frames.length) { done(); return; }
-      drawFrame(frames, i);
+      if (stale() || i >= battle.count) { done(); return; }
+      drawFrame(battle, i);
       requestAnimationFrame(step);
     };
     step();
   });
   if (stale()) return;
-  drawFrame(frames, frames.length - 1);
+  drawFrame(battle, battle.count - 1);
   await checkpoint('videoEnde');
 }
 let battleFrame = -1;   // zuletzt gezeigtes Bild (Test)
@@ -846,7 +879,7 @@ async function playBattle(battleP, mover, victim, move, stale) {
   victim.group.visible = false;
   removePiece(victim);
   mover.group.position.copy(centre);
-  await playFrames(battle.frames, battle.meta.fps ?? BATTLE.fps, stale);
+  await playFrames(battle, battle.meta.fps ?? BATTLE.fps, stale);
   // Der Sieger steht wie im letzten Bild in der Mitte und schaut zur Ecke des Opfers; mit der Rückfahrt der Kamera
   // dreht er sich in seine Grundrichtung
   mover.fig.root.rotation.y = mover.fig.homeFacing;
@@ -862,7 +895,8 @@ async function playBattle(battleP, mover, victim, move, stale) {
 let battlePhase = null;   // Test: 'anlauf', 'bereit', 'video', 'videoEnde', 'sieger', 'zurueck'
 
 // Studio für die Videovorlagen: rendert Angreifer und Opfer aus der Kampfkamera vor Grün (ohne Brett), quadratisch.
-//   phase 'start': beide in ihren Ecken einander zugewandt; 'end': der Angreifer allein in der Mitte, Blick zur Ecke
+//   phase 'start': beide in ihren Ecken einander zugewandt; 'angreifer' bzw. 'opfer': nur diese Figur in ihrer Ecke
+//   (Vorlagen für getrennte Angriffs- und Sterbevideos); 'end': der Angreifer allein in der Mitte, Blick zur Ecke
 //   des Opfers. Liefert ein PNG als data-URL. Danach Seite neu laden.
 function battleStudio({ attacker = 'wp', victim = 'bp', phase = 'start', size = 1024, background = 0x00ff00 } = {}) {
   renderer.setAnimationLoop(null);
@@ -886,10 +920,9 @@ function battleStudio({ attacker = 'wp', victim = 'bp', phase = 'start', size = 
   };
   const a = corner[attacker[0]];
   const v = corner[victim[0]];
-  if (phase === 'start') {
-    show(attacker, a, yawTowards(a, v));
-    show(victim, v, yawTowards(v, a));
-  } else {
+  if (phase === 'start' || phase === 'angreifer') show(attacker, a, yawTowards(a, v));
+  if (phase === 'start' || phase === 'opfer') show(victim, v, yawTowards(v, a));
+  if (phase === 'end') {
     show(attacker, centre, yawTowards(a, v));
   }
   const view = battleView(sq);
@@ -1234,7 +1267,7 @@ renderer.domElement.addEventListener('pointerup', (e) => {
 $('newGame').addEventListener('click', () => newGame());
 undoBtn.addEventListener('click', undo);
 $('flip').addEventListener('click', () => { flipped = !flipped; cameraHome(); });
-if (PIECE_SET_LOOK[choice.figuren].battles) colorSel.add(new Option('Beide (ohne Computer)', 'beide'));
+if (PIECE_SET_LOOK[choice.figuren].battles || PIECE_SET_LOOK[choice.figuren].attacks) colorSel.add(new Option('Beide (ohne Computer)', 'beide'));
 colorSel.addEventListener('change', () => newGame());
 
 const infoDlg = $('info');
