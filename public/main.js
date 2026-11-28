@@ -73,6 +73,9 @@ const PIECE_HEIGHT = { bauer: 1.35, laeufer: 1.7, dame: 1.8, koenig: 1.9, spring
 //              die Blickrichtung), down = ins Brett (Sohlen auf das Brett, wenn eine Stange tiefer reicht)
 //   only:      Satz im Aufbau: nur diese Modelle (Datei ohne .glb -> Höhe in Feldbreiten), alle übrigen kommen als
 //              Platzhalter aus dem Satz fallback (mit dessen Einstellungen)
+// Ordner eines Kampfvideos im Ritter-Satz: kampf/<angriff|tod>/<art>_<weiss|schwarz>
+const battleDir = (kind, code) => `assets/sets/ritter/kampf/${kind}/${
+  { p: 'bauer', n: 'springer', b: 'laeufer', r: 'turm', q: 'dame', k: 'koenig' }[code[1]]}_${code[0] === 'w' ? 'weiss' : 'schwarz'}`;
 const PIECE_SET_LOOK = {
   // Schnitzfiguren: Weiß Esche, Schwarz Nussbaum; Bewegungen aus tools/anim_figur.py, Turm aus tools/rig_turm.py
   schnitz: { height: PIECE_HEIGHT, matt: true },
@@ -95,8 +98,8 @@ const PIECE_SET_LOOK = {
     offset: { koenig_weiss: { back: 0.043, down: 0.003 }, koenig_schwarz: { down: 0.008 } },
     top: 2.12, fixedView: true,
     // Kampfszenen wie in Battle Chess: Angriffs- und Sterbevideos (Farbe+Art -> Ordner mit Einzelbildern)
-    attacks: { wp: 'assets/sets/ritter/kampf/angriff/bauer_weiss', bp: 'assets/sets/ritter/kampf/angriff/bauer_schwarz' },
-    deaths: { bp: 'assets/sets/ritter/kampf/tod/bauer_schwarz', wp: 'assets/sets/ritter/kampf/tod/bauer_weiss' } },
+    attacks: Object.fromEntries(['wp', 'bp', 'wn', 'bn'].map((c) => [c, battleDir('angriff', c)])),
+    deaths: Object.fromEntries(['wp', 'bp', 'wn', 'bn'].map((c) => [c, battleDir('tod', c)])) },
 };
 
 // ---------------------------------------------------------------------------
