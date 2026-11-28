@@ -98,8 +98,8 @@ const PIECE_SET_LOOK = {
     offset: { koenig_weiss: { back: 0.043, down: 0.003 }, koenig_schwarz: { down: 0.008 } },
     top: 2.12, fixedView: true,
     // Kampfszenen wie in Battle Chess: Angriffs- und Sterbevideos (Farbe+Art -> Ordner mit Einzelbildern)
-    attacks: Object.fromEntries(['wp', 'bp', 'wn', 'bn', 'wb', 'bb'].map((c) => [c, battleDir('angriff', c)])),
-    deaths: Object.fromEntries(['wp', 'bp', 'wn', 'bn', 'wb', 'bb'].map((c) => [c, battleDir('tod', c)])) },
+    attacks: Object.fromEntries(['wp', 'bp', 'wn', 'bn', 'wb', 'bb', 'wr', 'br'].map((c) => [c, battleDir('angriff', c)])),
+    deaths: Object.fromEntries(['wp', 'bp', 'wn', 'bn', 'wb', 'bb', 'wr', 'br'].map((c) => [c, battleDir('tod', c)])) },
 };
 
 // ---------------------------------------------------------------------------
@@ -897,11 +897,9 @@ async function playBattle(battleP, mover, victim, move, stale) {
 }
 let battlePhase = null;   // Test: 'anlauf', 'bereit', 'video', 'videoEnde', 'sieger', 'zurueck'
 
-// Studio für die Videovorlagen: rendert Angreifer und Opfer aus der Kampfkamera vor Grün (ohne Brett), quadratisch.
-//   phase 'start': beide in ihren Ecken einander zugewandt; 'angreifer' bzw. 'opfer': nur diese Figur in ihrer Ecke
-//   (Vorlagen für getrennte Angriffs- und Sterbevideos); 'end': der Angreifer allein in der Mitte, Blick zur Ecke
-//   des Opfers. Liefert ein PNG als data-URL. Danach Seite neu laden.
-function battleStudio({ attacker = 'wp', victim = 'bp', phase = 'start', size = 1024, background = 0x00ff00 } = {}) {
+// Studio für die Videovorlagen: Szene ohne Brett vor einfarbigem Hintergrund, Kampfkamera (quadratischer Ausschnitt wie
+// das Video im Spiel). Liefert Kamera, Feldmitte, Ecken und show(code, pos, yaw) zum Aufstellen einer Figur.
+function studioSetup(size, background) {
   renderer.setAnimationLoop(null);
   for (const p of livePieces) p.group.visible = false;
   scene.traverse((o) => { if (o.isMesh && !o.userData.studio) o.visible = false; });
@@ -920,14 +918,8 @@ function battleStudio({ attacker = 'wp', victim = 'bp', phase = 'start', size = 
     const a = p.fig.actions[p.fig.anim];
     a.time = 0;
     p.fig.mixer.update(0);
+    return p;
   };
-  const a = corner[attacker[0]];
-  const v = corner[victim[0]];
-  if (phase === 'start' || phase === 'angreifer') show(attacker, a, yawTowards(a, v));
-  if (phase === 'start' || phase === 'opfer') show(victim, v, yawTowards(v, a));
-  if (phase === 'end') {
-    show(attacker, centre, yawTowards(a, v));
-  }
   const view = battleView(sq);
   // Ausschnitt eines (gedachten) Vollbilds der Höhe full: Kantenlänge size, Mitte um up über der Bildmitte
   const cam = new THREE.PerspectiveCamera(camera.fov, 1, camera.near, camera.far);
@@ -941,6 +933,75 @@ function battleStudio({ attacker = 'wp', victim = 'bp', phase = 'start', size = 
   front.target.updateMatrixWorld();
   renderer.setPixelRatio(1);
   renderer.setSize(size, size);
+  return { cam, centre, corner, show };
+}
+
+// Studio-Standbilder: phase 'start': beide in ihren Ecken einander zugewandt; 'angreifer' bzw. 'opfer': nur diese
+// Figur in ihrer Ecke (Vorlagen für getrennte Angriffs- und Sterbevideos); 'end': der Angreifer allein in der Mitte,
+// Blick zur Ecke des Opfers. Liefert ein PNG als data-URL. Danach Seite neu laden.
+function battleStudio({ attacker = 'wp', victim = 'bp', phase = 'start', size = 1024, background = 0x00ff00 } = {}) {
+  const { cam, centre, corner, show } = studioSetup(size, background);
+  const a = corner[attacker[0]];
+  const v = corner[victim[0]];
+  if (phase === 'start' || phase === 'angreifer') show(attacker, a, yawTowards(a, v));
+  if (phase === 'start' || phase === 'opfer') show(victim, v, yawTowards(v, a));
+  if (phase === 'end') show(attacker, centre, yawTowards(a, v));
+  renderer.render(scene, cam);
+  return renderer.domElement.toDataURL('image/png');
+}
+
+// Studio-Bildfolge aus den Clips des Rigs (statt eines KI-Videos, oder als Steuervideo für control_video):
+//   role 'angreifer': Figur attacker in ihrer Ecke, 'opfer': Figur victim in ihrer Ecke, Blick zum Gegner.
+//   plan: Abschnitte { anim, dur (s, sonst Cliplänge), to: 'mitte' (während des Abschnitts dorthin rollen/gehen) }.
+//   depth: Tiefenbild statt Farbe (nah hell, fern dunkel, Hintergrund schwarz).
+// battleStudioRig richtet ein und liefert die Bildzahl, battleStudioRigFrame(i) das PNG von Bild i.
+let studioRig = null;
+function battleStudioRig({ attacker = 'wr', victim = 'bp', role = 'angreifer', plan = [], fps = 24, frames = 121,
+  size = 1024, background = 0x00ff00, depth = false } = {}) {
+  const { cam, centre, corner, show } = studioSetup(size, depth ? 0x000000 : background);
+  const a = corner[attacker[0]];
+  const v = corner[victim[0]];
+  const [code, pos, yaw] = role === 'angreifer' ? [attacker, a, yawTowards(a, v)] : [victim, v, yawTowards(v, a)];
+  const p = show(code, pos, yaw);
+  const clips = p.fig.model.clips;
+  let t0 = 0;
+  const segs = plan.map((s) => {
+    const dur = s.dur ?? clips[s.anim].duration;
+    const seg = { ...s, t0, dur };
+    t0 += dur;
+    return seg;
+  });
+  if (depth) {
+    // Tiefe nur im Bereich der Figur spreizen (sonst ist alles fast gleich grau)
+    const d = cam.position.distanceTo(centre);
+    cam.near = d - 1.5;
+    cam.far = d + 1.5;
+    cam.updateProjectionMatrix();
+    scene.overrideMaterial = new THREE.MeshDepthMaterial();
+  }
+  studioRig = { cam, p, segs, fps, from: pos.clone(), centre };
+  return frames;
+}
+
+function battleStudioRigFrame(i) {
+  const { cam, p, segs, fps, from, centre } = studioRig;
+  const t = i / fps;
+  const seg = segs.findLast((s) => t >= s.t0) ?? segs[0];
+  const local = Math.min(t - seg.t0, seg.dur);
+  // Position: Abschnitte mit to rollen/gehen gleichmäßig zur Mitte, danach bleibt die Figur dort
+  let at = from.clone();
+  for (const s of segs) {
+    if (!s.to) continue;
+    if (t >= s.t0 + s.dur) at = centre.clone();
+    else if (t >= s.t0) at = from.clone().lerp(centre, (t - s.t0) / s.dur);
+  }
+  p.group.position.copy(at);
+  const clip = p.fig.model.clips[seg.anim];
+  const action = p.fig.mixer.clipAction(clip);
+  p.fig.mixer.stopAllAction();
+  action.reset().play();
+  action.time = seg.anim === 'Idle' || seg.anim === 'WalkInPlace' ? local % clip.duration : Math.min(local, clip.duration);
+  p.fig.mixer.update(0);
   renderer.render(scene, cam);
   return renderer.domElement.toDataURL('image/png');
 }
@@ -1480,6 +1541,8 @@ window.chessApp = {
   camera: () => ({ locked: !controls.enabled, home: atHome, pos: camera.position.toArray() }),
   fps: () => fps,
   battleStudio,
+  battleStudioRig,
+  battleStudioRigFrame,
   battleStepping: (on) => { battleStepping = on; },
   battleContinue: () => battleGate?.(),
   battleState: () => ({ phase: battlePhase, frame: battleFrame, canvas: battleCanvas.style.display === 'none' ? null

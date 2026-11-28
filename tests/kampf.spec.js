@@ -213,6 +213,15 @@ test('Ritter: Läufer schlagen Läufer, beide Farben (Lxe5 Lxe5, Modus Beide)', 
   expect(errors).toEqual([]);
 });
 
+test('Ritter: Türme schlagen Türme, beide Farben (Txe5 Txe5, Modus Beide)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await captures(page, '4k3/8/8/r3r3/8/8/8/4RK2 w - - 0 1',
+    [['e1', 'e5', 'kampf_turm_blau'], ['a5', 'e5', 'kampf_turm_rot']]);
+  expect(await page.evaluate(() => window.chessApp.history())).toEqual(['Rxe5+', 'Rxe5']);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('e5'))).toBe('br');
+  expect(errors).toEqual([]);
+});
+
 test('Ritter: Springer schlagen Springer, beide Farben (Sxe5 Sxe5, Modus Beide)', async ({ page }) => {
   test.setTimeout(240_000);
   const errors = await captures(page, '4k3/8/2n5/4n3/8/5N2/8/4K3 w - - 0 1',
