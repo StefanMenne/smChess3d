@@ -95,8 +95,8 @@ const PIECE_SET_LOOK = {
     offset: { koenig_weiss: { back: 0.043, down: 0.003 }, koenig_schwarz: { down: 0.008 } },
     top: 2.12, fixedView: true,
     // Kampfszenen wie in Battle Chess: Angriffs- und Sterbevideos (Farbe+Art -> Ordner mit Einzelbildern)
-    attacks: { wp: 'assets/sets/ritter/kampf/angriff/bauer_weiss' },
-    deaths: { bp: 'assets/sets/ritter/kampf/tod/bauer_schwarz' } },
+    attacks: { wp: 'assets/sets/ritter/kampf/angriff/bauer_weiss', bp: 'assets/sets/ritter/kampf/angriff/bauer_schwarz' },
+    deaths: { bp: 'assets/sets/ritter/kampf/tod/bauer_schwarz', wp: 'assets/sets/ritter/kampf/tod/bauer_weiss' } },
 };
 
 // ---------------------------------------------------------------------------

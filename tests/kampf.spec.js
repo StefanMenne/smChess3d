@@ -144,3 +144,39 @@ test('Ritter: Kamera frei drehbar, beim Zug zurück in die Startansicht und gesp
   expect((await cam()).locked).toBe(false);
   expect(errors).toEqual([]);
 });
+
+test('Ritter: schwarzer Bauer schlägt weißen Bauern mit Kampfvideo (dxe4, Modus Beide)', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  await page.goto('/?figurensatz=ritter&brett=schnitz');
+  await page.waitForSelector('body[data-ready="1"]', { timeout: 60_000 });
+  await page.getByTestId('color').selectOption('beide');
+  // 1. e4 d5 2. a3, Schwarz am Zug
+  await page.evaluate(() => window.chessApp.newGame('rnbqkbnr/ppp1pppp/8/3p4/4P3/P7/1PPP1PPP/RNBQKBNR b KQkq - 0 2'));
+  await page.evaluate(() => window.chessApp.battleStepping(true));
+  await page.waitForTimeout(1200);
+  await clickSquare(page, 'd5');
+  await clickSquare(page, 'e4');
+  const step = async (phase, shot) => {
+    await page.waitForFunction((p) => window.chessApp.battleState().phase === p, phase, { timeout: 30_000 });
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${SHOTS}/${shot}.png` });
+  };
+  await step('bereit', 'kampf_rot_2_vorher');
+  await page.evaluate(() => window.chessApp.battleContinue());
+  await step('video', 'kampf_rot_3_video_erstes');
+  await page.evaluate(() => window.chessApp.battleContinue());
+  await page.waitForFunction(() => window.chessApp.battleState().frame >= 45);
+  await page.screenshot({ path: `${SHOTS}/kampf_rot_4_video_mitte.png` });
+  await step('videoEnde', 'kampf_rot_5_video_letztes');
+  await page.evaluate(() => window.chessApp.battleContinue());
+  await step('sieger', 'kampf_rot_6_nachher');
+  expect((await state(page)).canvas).toBeNull();
+  await page.evaluate(() => window.chessApp.battleContinue());
+  await page.waitForFunction(() => window.chessApp.isIdle() && window.chessApp.history().length === 1, null,
+    { timeout: 60_000 });
+  expect(await page.evaluate(() => window.chessApp.history())).toEqual(['dxe4']);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('e4'))).toBe('bp');
+  expect(errors).toEqual([]);
+});

@@ -1,16 +1,17 @@
 #!/bin/bash
 # Einzelbilder eines LTX-Videos (generate_video frames=True, Grün-Hintergrund) freistellen und als WebP mit Alpha
 # für das Spiel ablegen:
-#   tools/ritter/kampf_frames.sh video_<seed>_frames.zip public/assets/sets/ritter/kampf/<ordner> [groesse=1024] [treffer] [bilder]
+#   tools/ritter/kampf_frames.sh video_<seed>_frames.zip public/assets/sets/ritter/kampf/<ordner> [groesse=1024] [treffer] [bilder] [ab]
 # treffer: bei Angriffsvideos das Bild, in dem die Waffe das Opfer trifft (dort startet das Sterbevideo), sonst -
-# bilder:  nur die ersten so vielen Bilder nehmen (Sterbevideo kürzen, sobald das Opfer still liegt)
+# bilder:  nur so viele Bilder nehmen (Sterbevideo kürzen, sobald das Opfer still liegt), sonst -
+# ab:      erst ab diesem Bild (Sterbevideo: ruhigen Anfang weglassen, damit das Opfer sofort auf den Treffer reagiert)
 # Chromakey auf das Grün, das LTX aus dem Reingrün der Vorlagen macht (gemessen um 07EB03), Grünstich an den Rändern entfernen (despill), dann meta.json.
 set -e
-ZIP=$1; OUT=$2; SIZE=${3:-1024}; HIT=${4:-}; [ "$HIT" = - ] && HIT=; COUNT=$5
+ZIP=$1; OUT=$2; SIZE=${3:-1024}; HIT=${4:-}; [ "$HIT" = - ] && HIT=; COUNT=${5:-}; [ "$COUNT" = - ] && COUNT=; FROM=${6:-0}
 [ -f "$ZIP" ] && [ -n "$OUT" ] || { echo "Aufruf: $0 frames.zip zielordner [groesse]"; exit 1; }
 TMP=$(mktemp -d)
 unzip -q "$ZIP" -d "$TMP"
-mapfile -t PNGS < <(find "$TMP" -name '*.png' | sort | head -n "${COUNT:-100000}")
+mapfile -t PNGS < <(find "$TMP" -name '*.png' | sort | tail -n +$((FROM + 1)) | head -n "${COUNT:-100000}")
 [ ${#PNGS[@]} -gt 0 ] || { echo "keine PNGs in $ZIP"; exit 1; }
 mkdir -p "$OUT"
 rm -f "$OUT"/*.webp
