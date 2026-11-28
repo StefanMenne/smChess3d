@@ -181,26 +181,42 @@ test('Ritter: schwarzer Bauer schlägt weißen Bauern mit Kampfvideo (dxe4, Modu
   expect(errors).toEqual([]);
 });
 
-test('Ritter: Springer schlagen Springer, beide Farben (Sxe5 Sxe5, Modus Beide)', async ({ page }) => {
-  test.setTimeout(240_000);
+// Schlagfolge im Modus Beide: je Zug wird die Kampfszene bis ins Video abgewartet und mitten im Video fotografiert
+async function captures(page, fen, moves) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   await page.goto('/?figurensatz=ritter&brett=schnitz');
   await page.waitForSelector('body[data-ready="1"]', { timeout: 60_000 });
   await page.getByTestId('color').selectOption('beide');
-  await page.evaluate(() => window.chessApp.newGame('4k3/8/2n5/4n3/8/5N2/8/4K3 w - - 0 1'));
+  await page.evaluate((f) => window.chessApp.newGame(f), fen);
   await page.waitForTimeout(1200);
-  for (const [from, to, n, shot] of [['f3', 'e5', 1, 'kampf_springer_blau'], ['c6', 'e5', 2, 'kampf_springer_rot']]) {
+  for (const [i, [from, to, shot]] of moves.entries()) {
     await clickSquare(page, from);
     await clickSquare(page, to);
     await page.waitForFunction(() => window.chessApp.battleState().phase === 'anlauf', null, { timeout: 60_000 });
     await page.waitForFunction(() => window.chessApp.battleState().phase === 'video'
-      && window.chessApp.battleState().frame >= 45, null, { timeout: 60_000 });
+      && window.chessApp.battleState().frame >= 60, null, { timeout: 60_000 });
     await page.screenshot({ path: `${SHOTS}/${shot}.png` });
-    await page.waitForFunction((k) => window.chessApp.isIdle() && window.chessApp.history().length === k, n,
+    await page.waitForFunction((k) => window.chessApp.isIdle() && window.chessApp.history().length === k, i + 1,
       { timeout: 90_000 });
   }
+  return errors;
+}
+
+test('Ritter: Läufer schlagen Läufer, beide Farben (Lxe5 Lxe5, Modus Beide)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await captures(page, '4k3/2b4p/8/4b3/8/2B5/P7/4K3 w - - 0 1',
+    [['c3', 'e5', 'kampf_laeufer_blau'], ['c7', 'e5', 'kampf_laeufer_rot']]);
+  expect(await page.evaluate(() => window.chessApp.history())).toEqual(['Bxe5', 'Bxe5']);
+  expect(await page.evaluate(() => window.chessApp.pieceAt('e5'))).toBe('bb');
+  expect(errors).toEqual([]);
+});
+
+test('Ritter: Springer schlagen Springer, beide Farben (Sxe5 Sxe5, Modus Beide)', async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await captures(page, '4k3/8/2n5/4n3/8/5N2/8/4K3 w - - 0 1',
+    [['f3', 'e5', 'kampf_springer_blau'], ['c6', 'e5', 'kampf_springer_rot']]);
   expect(await page.evaluate(() => window.chessApp.history())).toEqual(['Nxe5', 'Nxe5']);
   expect(await page.evaluate(() => window.chessApp.pieceAt('e5'))).toBe('bn');
   expect(errors).toEqual([]);

@@ -98,8 +98,8 @@ const PIECE_SET_LOOK = {
     offset: { koenig_weiss: { back: 0.043, down: 0.003 }, koenig_schwarz: { down: 0.008 } },
     top: 2.12, fixedView: true,
     // Kampfszenen wie in Battle Chess: Angriffs- und Sterbevideos (Farbe+Art -> Ordner mit Einzelbildern)
-    attacks: Object.fromEntries(['wp', 'bp', 'wn', 'bn'].map((c) => [c, battleDir('angriff', c)])),
-    deaths: Object.fromEntries(['wp', 'bp', 'wn', 'bn'].map((c) => [c, battleDir('tod', c)])) },
+    attacks: Object.fromEntries(['wp', 'bp', 'wn', 'bn', 'wb', 'bb'].map((c) => [c, battleDir('angriff', c)])),
+    deaths: Object.fromEntries(['wp', 'bp', 'wn', 'bn', 'wb', 'bb'].map((c) => [c, battleDir('tod', c)])) },
 };
 
 // ---------------------------------------------------------------------------
